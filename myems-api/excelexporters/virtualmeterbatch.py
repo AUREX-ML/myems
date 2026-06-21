@@ -26,6 +26,7 @@ import uuid
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image
 from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
 
 
 ########################################################################################################################
@@ -82,9 +83,21 @@ def generate_excel(report, space_name, reporting_start_datetime_local, reporting
     ws = wb.active
     ws.title = "VirtualMeterBatch"
 
-    # Col width
-    for i in range(ord('A'), ord('L')):
-        ws.column_dimensions[chr(i)].width = 20.0
+    date_list = list(report.get('date_list') or [])
+    if len(date_list) == 0:
+        first_meter = next(iter(report.get('virtual_meters', [])), None)
+        if first_meter is not None:
+            date_list = [item.get('date') for item in first_meter.get('daily_values', []) if item.get('date')]
+
+    date_list_len = len(date_list)
+    total_cols = 4 + date_list_len + 1  # ID, Name, Space, Energy Category + dates + total
+
+    for col_number in range(1, total_cols + 1):
+        ws.column_dimensions[get_column_letter(col_number)].width = 15.0
+
+    if date_list_len > 0:
+        for col_idx in range(4, 4 + date_list_len):
+            ws.column_dimensions[get_column_letter(col_idx + 1)].width = 12.0
 
     # Head image
     ws.row_dimensions[1].height = 105
@@ -116,23 +129,50 @@ def generate_excel(report, space_name, reporting_start_datetime_local, reporting
     ws['B6'] = _('Name')
     ws['C6'].font = title_font
     ws['C6'] = _('Space')
+    ws['D6'].font = title_font
+    ws['D6'] = _('Energy Category')
 
-    ca_len = len(report['energycategories'])
-    for i in range(0, ca_len):
-        col = chr(ord('D') + i)
+    for i in range(0, len(date_list)):
+        col_idx = 4 + i
+        col = get_column_letter(col_idx + 1)
         ws[col + '6'].font = title_font
-        ws[col + '6'] = report['energycategories'][i]['name'] + " (" + \
-            report['energycategories'][i]['unit_of_measure'] + ")"
+        ws[col + '6'] = str(date_list[i])
+
+    total_col_idx = 4 + len(date_list)
+    total_col = get_column_letter(total_col_idx + 1)
+    ws[total_col + '6'].font = title_font
+    ws[total_col + '6'] = _('Total')
 
     current_row_number = 7
     for i in range(0, len(report['virtual_meters'])):
         ws['A' + str(current_row_number)] = str(report['virtual_meters'][i]['id'])
         ws['B' + str(current_row_number)] = report['virtual_meters'][i]['virtual_meter_name']
         ws['C' + str(current_row_number)] = report['virtual_meters'][i]['space_name']
-        ca_len = len(report['virtual_meters'][i]['values'])
-        for j in range(0, ca_len):
-            col = chr(ord('D') + j)
-            ws[col + str(current_row_number)] = report['virtual_meters'][i]['values'][j]
+        ws['D' + str(current_row_number)] = report['virtual_meters'][i].get('energy_category_name', '')
+
+        daily_values = report['virtual_meters'][i].get('daily_values', [])
+        daily_value_map = {item.get('date'): item.get('value') for item in daily_values if item.get('date')}
+        for j, day in enumerate(date_list):
+            col_idx = 4 + j
+            col = get_column_letter(col_idx + 1)
+            cell = ws[col + str(current_row_number)]
+            value = daily_value_map.get(day)
+            cell.value = value
+            try:
+                if value is not None and not isinstance(value, bool):
+                    cell.value = float(value)
+                    cell.number_format = '0.00'
+            except (TypeError, ValueError):
+                pass
+        total_cell = ws[total_col + str(current_row_number)]
+        value = report['virtual_meters'][i].get('subtotal')
+        total_cell.value = value
+        try:
+            if value is not None and not isinstance(value, bool):
+                total_cell.value = float(value)
+                total_cell.number_format = '0.00'
+        except (TypeError, ValueError):
+            pass
 
         current_row_number += 1
 

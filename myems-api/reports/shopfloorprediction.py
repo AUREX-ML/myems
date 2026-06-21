@@ -28,11 +28,6 @@ class Reporting:
         """"Initializes Reporting"""
         pass
 
-    @staticmethod
-    def on_options(req, resp):
-        _ = req
-        resp.status = falcon.HTTP_200
-
     ####################################################################################################################
     # PROCEDURES
     # Step 1: valid parameters
@@ -639,10 +634,17 @@ class Reporting:
             result['base_period']['total_in_kgco2e'] \
             if result['base_period']['total_in_kgco2e'] > Decimal(0.0) else None
 
+        if 'parameters_data' not in locals():
+            parameters_data = {
+                "names": [],
+                "timestamps": [],
+                "values": []
+            }
+
         result['parameters'] = {
-            "names": parameters_data['names'],
-            "timestamps": parameters_data['timestamps'],
-            "values": parameters_data['values']
+            "names": parameters_data.get('names', []),
+            "timestamps": parameters_data.get('timestamps', []),
+            "values": parameters_data.get('values', [])
         }
         result['excel_bytes_base64'] = None
         if not is_quick_mode:

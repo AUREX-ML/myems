@@ -5,11 +5,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Added
+- added search box to data point page in myems-admin
+- added deepseek AI analysis to reports in myems-web
+### Changed
+- updated meter batch report in myems-api and myems-web
+- updated virtual meter batch report in myems-api and myems-web
+- updated dashboard in myems-web
+- updated notification in myems-web
+- updated equipment dashboard in myems-web
+- updated tenant batch report in myems-api and myems-web
+- updated reset password dialog in myems-web
+- updated login form in myems-web
+- updated knowledge file page in myems-web
+- updated user activity logger in myems-api
+### Fixed
+- fixed add/edit user issue in myems-admin 
+- fixed issue of DateRangePickerWrapper in myems-web
+- fixed issue of MeterSubmetersBalance in myems-web
+- fixed issue of shopfloor prediction report in myems-api
+- fixed typo of file name in myems-aggregation
+### Removed
+- removed unused function from carbon_dioxide_emission_factor in myems-aggregation
+- remvoed falcon-cors middleware and on_options methods from myems-api
+
+## [v6.5.0] - 2026-05-26
+### Added
 - added comprehensive and exhaustive explanatory descriptions to myems-admin
 - added equipment prediction report in myems-web
 - added combined equipment prediction report in myems-web
 - added offlinemeteruuid and virtualmeteruuid as optional request parameter to reports in myems-api
-- added deepseek ai analysis to reports in myems-api and myems-web
+- added deepseek AI analysis to reports in myems-api and myems-web
 - added meter prediction report in myems-web
 - added offline meter prediction report in myems-web
 - added virtual meter prediction report in myems-web
@@ -17,15 +42,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - added shopfloor prediction report in myems-web
 - added store prediction report in myems-web
 - added the function of displaying the password entered by the user to myems-admin
-- added store dashboard to myems-web
-- added tenant dashboard to myems-web
-- added shopfloor dashboard to myems-web
+- added store dashboard to myems-api and myems-web
+- added tenant dashboard to myems-api and myems-web
+- added shopfloor dashboard to myems-api and myems-web
+- added equipment dashboard to myems-api and myems-web
+- added combined equipment dashboard to myems-api and myems-web
 - added full space path to meter tracking in myems-api and myems-web
 - added full space path to meter batch report in myems-api
+- added full space path to virtual meter batch report in myems-api
+- added full space path to offline meter batch report in myems-api
+- added full space path to tenant batch report in myems-api
+- added full space path to store batch report in myems-api
+- added full space path to shopfloor batch report in myems-api
+- added full space path to equipment batch report in myems-api
+- added full space path to combined equipment batch report in myems-api
 ### Changed
 - changed node.js version to 22.22.2, 24.5.0 or later in myems-web
 - changed npm version to 10.9.7, 11.5.1 or later in myems-web
 - changed dockerfile in myems-web
+- changed introduction on waitress which supports windows directly in myems-api
 ### Fixed
 - added try...finally for cnx.close() and cursor.close() in myems-api
 - fixed overwritten property issues in myems-web
@@ -33,7 +68,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - fixed semicolon insertion issues in myems-web
 - fixed duplicate property issues in myems-admin
 - fixed dependency files vulnerabilities in myems-web
+- fixed issue of menu setting in myems-admin
 ### Removed
+- None
 
 ## [v6.4.0] - 2026-04-26
 ### Added
@@ -2259,7 +2296,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Removed
 -   None.
 
-[Unreleased]: https://gitee.com/MyEMS/myems/compare/v6.2.0...HEAD
+[Unreleased]: https://gitee.com/MyEMS/myems/compare/v6.5.0...HEAD
+[6.5.0]: https://gitee.com/MyEMS/myems/compare/v6.4.0...v6.5.0
+[6.4.0]: https://gitee.com/MyEMS/myems/compare/v6.3.0...v6.4.0
+[6.3.0]: https://gitee.com/MyEMS/myems/compare/v6.2.0...v6.3.0
 [6.2.0]: https://gitee.com/MyEMS/myems/compare/v6.1.0...v6.2.0
 [6.1.0]: https://gitee.com/MyEMS/myems/compare/v5.12.0...v6.1.0
 [5.12.0]: https://gitee.com/MyEMS/myems/compare/v5.11.0...v5.12.0

@@ -50,11 +50,6 @@ class Reporting:
         """"Initializes Reporting"""
         pass
 
-    @staticmethod
-    def on_options(req, resp):
-        _ = req
-        resp.status = falcon.HTTP_200
-
     ####################################################################################################################
     # PROCEDURES
     # Step 1: valid parameters
@@ -222,6 +217,9 @@ class Reporting:
                         parent_node = node_dict[row[2]] if row[2] is not None else None
                         node_dict[row[0]] = AnyNode(id=row[0], parent=parent_node, name=row[1])
 
+                space_node = node_dict.get(space_id)
+                space_name = '/'.join([node.name for node in space_node.path]) if space_node is not None else space_name
+
                 ##############################################################################################
                 # Step 3: query all meters in the space tree
                 ##############################################################################################
@@ -233,21 +231,29 @@ class Reporting:
                     space_dict[node.id] = node.name
 
                 cursor_system_db.execute(" SELECT vm.id, vm.name AS virtual_meter_name, vm.energy_category_id, "
-                                         "        s.name AS space_name, "
-                                         "        cc.name AS cost_center_name"
+                                         "        s.name AS space_name, s.id AS space_id, "
+                                         "        cc.name AS cost_center_name, ec.name AS energy_category_name "
                                          " FROM tbl_spaces s, tbl_spaces_virtual_meters svm, "
-                                         "      tbl_virtual_meters vm, tbl_cost_centers cc "
+                                         "      tbl_virtual_meters vm, tbl_cost_centers cc, tbl_energy_categories ec "
                                          " WHERE s.id IN ( " + ', '.join(map(str, space_dict.keys())) + ") "
                                          " AND svm.space_id = s.id AND svm.virtual_meter_id = vm.id "
+                                         " AND vm.energy_category_id = ec.id "
                                          " AND vm.cost_center_id = cc.id  ", )
                 rows_meters = cursor_system_db.fetchall()
                 if rows_meters is not None and len(rows_meters) > 0:
                     for row in rows_meters:
+                        current_space_id = row[4]
+                        current_space_node = node_dict.get(current_space_id)
+                        current_space_path = \
+                            '/'.join([node.name for node in current_space_node.path]) \
+                            if current_space_node is not None else row[3]
                         virtual_meter_dict[row[0]] = {"virtual_meter_name": row[1],
                                                       "energy_category_id": row[2],
-                                                      "space_name": row[3],
-                                                      "cost_center_name": row[4],
+                                                      "space_name": current_space_path,
+                                                      "cost_center_name": row[5],
+                                                      "energy_category_name": row[6],
                                                       "values": list(),
+                                                      "daily_values": dict(),
                                                       "subtotal": None}
                         energy_category_set.add(row[2])
 
@@ -271,30 +277,72 @@ class Reporting:
                                                      "name": row_energy_category[1],
                                                      "unit_of_measure": row_energy_category[2]})
 
-                ####################################################################################################
-                # Step 5: query reporting period energy input
-                ####################################################################################################
-                for virtual_meter_id in virtual_meter_dict:
+                #################################################################################################
+                # Step 5: query reporting period energy input (total and daily)
+                #################################################################################################
 
-                    cursor_energy_db.execute(" SELECT SUM(actual_value) "
-                                             " FROM tbl_virtual_meter_hourly "
-                                             " WHERE virtual_meter_id = %s "
-                                             "     AND start_datetime_utc >= %s "
-                                             "     AND start_datetime_utc < %s ",
-                                             (virtual_meter_id,
-                                              reporting_start_datetime_utc,
-                                              reporting_end_datetime_utc))
-                    rows_meter_energy = cursor_energy_db.fetchall()
-                    for energy_category in energy_category_list:
-                        subtotal = None
-                        for row_meter_energy in rows_meter_energy:
-                            if energy_category['id'] == virtual_meter_dict[virtual_meter_id]['energy_category_id']:
-                                subtotal = row_meter_energy[0]
-                                virtual_meter_dict[virtual_meter_id]['subtotal'] = subtotal
-                                break
-                        # append subtotal
-                        # append None if energy category is not applicable
-                        virtual_meter_dict[virtual_meter_id]['values'].append(subtotal)
+                date_list = list()
+                reporting_start_datetime_local = \
+                    reporting_start_datetime_utc.replace(tzinfo=timezone.utc) + timedelta(minutes=timezone_offset)
+                reporting_end_datetime_local = \
+                    reporting_end_datetime_utc.replace(tzinfo=timezone.utc) + timedelta(minutes=timezone_offset)
+
+                current_date = reporting_start_datetime_local.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = reporting_end_datetime_local.replace(hour=0, minute=0, second=0, microsecond=0)
+
+                if reporting_end_datetime_local == end_date:
+                    end_date -= timedelta(days=1)
+
+                while current_date <= end_date:
+                    date_list.append(current_date)
+                    current_date += timedelta(days=1)
+
+                virtual_meter_ids = list(virtual_meter_dict.keys())
+                if len(virtual_meter_ids) > 0:
+                    virtual_meter_id_placeholders = ', '.join(['%s'] * len(virtual_meter_ids))
+                    daily_query = (
+                        " SELECT virtual_meter_id, "
+                        "        DATE(DATE_ADD(start_datetime_utc, INTERVAL " + str(timezone_offset) + " MINUTE)) AS local_date, "
+                        "        SUM(actual_value) AS daily_value "
+                        " FROM tbl_virtual_meter_hourly "
+                        " WHERE virtual_meter_id IN (" + virtual_meter_id_placeholders + ") "
+                        "       AND start_datetime_utc >= %s "
+                        "       AND start_datetime_utc < %s "
+                        " GROUP BY virtual_meter_id, local_date "
+                        " ORDER BY virtual_meter_id, local_date "
+                    )
+                    cursor_energy_db.execute(
+                        daily_query,
+                        virtual_meter_ids + [reporting_start_datetime_utc, reporting_end_datetime_utc]
+                    )
+                    rows_daily_aggregated = cursor_energy_db.fetchall()
+
+                    virtual_meter_subtotal_dict = dict()
+                    for row_daily in rows_daily_aggregated:
+                        virtual_meter_id = row_daily[0]
+                        local_date = row_daily[1]
+                        daily_value = row_daily[2]
+
+                        if virtual_meter_id not in virtual_meter_dict:
+                            continue
+
+                        date_str = local_date.strftime('%Y-%m-%d') if isinstance(local_date, datetime) else str(local_date)
+                        virtual_meter_dict[virtual_meter_id]['daily_values'][date_str] = daily_value
+
+                        if daily_value is None:
+                            continue
+                        if virtual_meter_id not in virtual_meter_subtotal_dict:
+                            virtual_meter_subtotal_dict[virtual_meter_id] = daily_value
+                        else:
+                            virtual_meter_subtotal_dict[virtual_meter_id] += daily_value
+
+                    for virtual_meter_id in virtual_meter_dict:
+                        subtotal = virtual_meter_subtotal_dict.get(virtual_meter_id, None)
+                        virtual_meter_dict[virtual_meter_id]['subtotal'] = subtotal
+                        for energy_category in energy_category_list:
+                            virtual_meter_dict[virtual_meter_id]['values'].append(
+                                subtotal if energy_category['id'] == virtual_meter_dict[virtual_meter_id]['energy_category_id'] else None
+                            )
 
             finally:
                 if cursor_system_db:
@@ -313,17 +361,29 @@ class Reporting:
         ################################################################################################################
         virtual_meter_list = list()
         for virtual_meter_id, virtual_meter in virtual_meter_dict.items():
+            daily_values_list = list()
+            for date_obj in date_list:
+                date_str = date_obj.strftime('%Y-%m-%d')
+                daily_values_list.append({
+                    "date": date_str,
+                    "value": virtual_meter['daily_values'].get(date_str, None)
+                })
             virtual_meter_list.append({
                 "id": virtual_meter_id,
                 "virtual_meter_name": virtual_meter['virtual_meter_name'],
                 "space_name": virtual_meter['space_name'],
                 "cost_center_name": virtual_meter['cost_center_name'],
+                "energy_category_name": virtual_meter.get('energy_category_name', ''),
                 "values": virtual_meter['values'],
+                "daily_values": daily_values_list,
                 "subtotal": virtual_meter['subtotal'],
             })
 
-        result = {'virtual_meters': virtual_meter_list,
-                  'energycategories': energy_category_list}
+        result = {
+            'virtual_meters': virtual_meter_list,
+            'energycategories': energy_category_list,
+            "date_list": [date_obj.strftime('%Y-%m-%d') for date_obj in date_list],
+        }
 
         # export result to Excel file and then encode the file to base64 string
         if not is_quick_mode:

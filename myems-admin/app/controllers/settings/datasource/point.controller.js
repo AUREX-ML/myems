@@ -1,5 +1,7 @@
 'use strict';
 
+// Point controller - drag-and-drop point binding
+
 app.controller('PointController', function(
 	$scope,
 	$rootScope,
@@ -13,6 +15,7 @@ app.controller('PointController', function(
 	$scope.cur_user = JSON.parse($window.localStorage.getItem("myems_admin_ui_current_user"));
 	$scope.exportdata = '';
 	$scope.importdata = '';
+	$scope.searchPointsKeyword = '';
 
 	// pagination for points table
 	$scope.points = [];
@@ -41,6 +44,7 @@ app.controller('PointController', function(
 		$scope.updatePagedPoints();
 	};
 
+	// Load all data sources from API
 	$scope.getAllDataSources = function() {
 		let headers = { "User-UUID": $scope.cur_user.uuid, "Token": $scope.cur_user.token };
 		DataSourceService.getAllDataSources(headers, function (response) {
@@ -73,6 +77,7 @@ app.controller('PointController', function(
 
 	};
 
+	// Load points by data source id
 	$scope.getPointsByDataSourceID = function(id) {
 		let headers = { "User-UUID": $scope.cur_user.uuid, "Token": $scope.cur_user.token };
 		PointService.getPointsByDataSourceID(id, headers, function (response) {
@@ -89,13 +94,54 @@ app.controller('PointController', function(
 
 	};
 
+	let searchDebounceTimer = null;
 
+	function safeApply(scope) {
+		if (!scope.$$phase && !scope.$root.$$phase) {
+			scope.$apply();
+		}
+	}
+
+	// Search points by keyword
+	$scope.searchPoints = function() {
+		const headers = {
+			"User-UUID": $scope.cur_user?.uuid,
+			"Token": $scope.cur_user?.token
+		};
+
+		const rawKeyword = $scope.searchPointsKeyword || "";
+		const trimmedKeyword = rawKeyword.trim();
+
+		if (searchDebounceTimer) {
+			clearTimeout(searchDebounceTimer);
+		}
+
+		searchDebounceTimer = setTimeout(() => {
+			if (!trimmedKeyword && !$scope.currentDataSource) {
+				$scope.points = [];
+				$scope.pointPagination.currentPage = 1;
+				$scope.updatePagedPoints();
+				safeApply($scope);
+				return;
+			}
+
+			PointService.searchPoints(trimmedKeyword, $scope.currentDataSource, headers, (response) => {
+				$scope.points = (response.status === 200) ? response.data : [];
+				$scope.pointPagination.currentPage = 1;
+				$scope.updatePagedPoints();
+			});
+		}, 300);
+	};
+
+	// Handle data source change
 	$scope.changeDataSource = function(item, model) {
 		$scope.currentDataSource = model;
+		$scope.searchPointsKeyword = '';
 		$scope.pointPagination.currentPage = 1;
 		$scope.getPointsByDataSourceID($scope.currentDataSource);
 	};
 
+	// Open add modal and create point
 	$scope.addPoint = function() {
 		var modalInstance = $uibModal.open({
 			templateUrl: 'views/settings/datasource/point.model.html',
@@ -129,6 +175,7 @@ app.controller('PointController', function(
 		$rootScope.modalInstance = modalInstance;
 	};
 
+	// Open edit modal and update point
 	$scope.editPoint = function(point) {
 		var modalInstance = $uibModal.open({
 			windowClass: "animated fadeIn",
@@ -170,6 +217,7 @@ app.controller('PointController', function(
 		$rootScope.modalInstance = modalInstance;
 	};
 
+	// Confirm and delete point
 	$scope.deletePoint = function(point) {
 		SweetAlert.swal({
 				title: $translate.instant("SWEET.TITLE"),
@@ -207,6 +255,7 @@ app.controller('PointController', function(
 			});
 	};
 
+	// Export point as JSON
 	$scope.exportPoint = function(point) {
 		let headers = { "User-UUID": $scope.cur_user.uuid, "Token": $scope.cur_user.token };
 		PointService.exportPoint(point, headers, function(response) {
@@ -236,6 +285,7 @@ app.controller('PointController', function(
 		});
 	};
 
+	// Clone an existing point
 	$scope.clonePoint = function(point){
 		let headers = { "User-UUID": $scope.cur_user.uuid, "Token": $scope.cur_user.token };
 		PointService.clonePoint(point, headers, function(response) {
@@ -259,6 +309,7 @@ app.controller('PointController', function(
 		});
 	};
 
+	// Import point from JSON
 	$scope.importPoint = function() {
 		var modalInstance = $uibModal.open({
 			templateUrl: 'views/common/import.html',
@@ -314,6 +365,7 @@ app.controller('PointController', function(
 });
 
 
+// Modal controller for add dialog
 app.controller('ModalAddPointCtrl', function($scope, $uibModalInstance) {
 
 	$scope.operation = "SETTING.ADD_POINT";
@@ -337,6 +389,7 @@ app.controller('ModalAddPointCtrl', function($scope, $uibModalInstance) {
 	});
 });
 
+// Modal controller for edit dialog
 app.controller('ModalEditPointCtrl', function($scope, $uibModalInstance, params) {
 	$scope.operation = "SETTING.EDIT_POINT";
 	$scope.point = params.point;

@@ -1,4 +1,4 @@
-import React, { Fragment, useEffect, useState, useContext } from 'react';
+import React, { Fragment, useEffect, useState, useContext, useCallback } from 'react';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -23,6 +23,7 @@ import withRedirect from '../../../hoc/withRedirect';
 import { withTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import ButtonIcon from '../../common/ButtonIcon';
+import DeepSeekAnalysisModal from '../common/DeepSeekAnalysisModal';
 import { APIBaseURL, settings } from '../../../config';
 import Appcontext from '../../../context/Context';
 import DateRangePickerWrapper from '../common/DateRangePickerWrapper';
@@ -102,10 +103,29 @@ const TenantBatch = ({ setRedirect, setRedirectUrl, t }) => {
   const [submitButtonDisabled, setSubmitButtonDisabled] = useState(false);
   const [spinnerHidden, setSpinnerHidden] = useState(true);
   const [exportButtonHidden, setExportButtonHidden] = useState(true);
+  const [smartAnalysisOpen, setSmartAnalysisOpen] = useState(false);
+  const [smartAnalysisContext, setSmartAnalysisContext] = useState(null);
   const [resultDataHidden, setResultDataHidden] = useState(true);
   //Results
   const [detailedDataTableColumns, setDetailedDataTableColumns] = useState([
-    { dataField: 'name', text: t('Name'), sort: true },
+    {
+      dataField: 'id',
+      text: t('ID'),
+      sort: true,
+      headerStyle: { width: '90px' },
+      style: { width: '90px' },
+      headerClasses: 'tenant-batch-sticky-id',
+      classes: 'tenant-batch-sticky-id'
+    },
+    {
+      dataField: 'name',
+      text: t('Name'),
+      sort: true,
+      headerStyle: { width: '220px' },
+      style: { width: '220px' },
+      headerClasses: 'tenant-batch-sticky-name',
+      classes: 'tenant-batch-sticky-name'
+    },
     { dataField: 'space', text: t('Space'), sort: true }
   ]);
   const [excelBytesBase64, setExcelBytesBase64] = useState(undefined);
@@ -229,10 +249,23 @@ const TenantBatch = ({ setRedirect, setRedirectUrl, t }) => {
           if (json['tenants'].length > 0) {
             let detailed_column_list = [];
             detailed_column_list.push({
+              dataField: 'id',
+              text: t('ID'),
+              sort: true,
+              headerStyle: { width: '90px' },
+              style: { width: '90px' },
+              headerClasses: 'tenant-batch-sticky-id',
+              classes: 'tenant-batch-sticky-id'
+            });
+            detailed_column_list.push({
               dataField: 'name',
               text: t('Name'),
               formatter: nameFormatter,
-              sort: true
+              sort: true,
+              headerStyle: { width: '220px' },
+              style: { width: '220px' },
+              headerClasses: 'tenant-batch-sticky-name',
+              classes: 'tenant-batch-sticky-name'
             });
             detailed_column_list.push({
               dataField: 'space',
@@ -240,32 +273,18 @@ const TenantBatch = ({ setRedirect, setRedirectUrl, t }) => {
               sort: true
             });
             json['energycategories'].forEach((currentValue, index) => {
-              detailed_column_list.push(
-                {
-                  dataField: 'a' + 2 * index,
-                  text: currentValue['name'] + ' (' + currentValue['unit_of_measure'] + ')',
-                  sort: true,
-                  formatter: function(decimalValue) {
-                    if (typeof decimalValue === 'number') {
-                      return decimalValue.toFixed(2);
-                    } else {
-                      return null;
-                    }
-                  }
-                },
-                {
-                  dataField: 'a' + (2 * index + 1),
-                  text: currentValue['name'] + ' ' + t('Maximum Load') + ' (' + currentValue['unit_of_measure'] + ')',
-                  sort: true,
-                  formatter: function(decimalValue) {
-                    if (typeof decimalValue === 'number') {
-                      return decimalValue.toFixed(2);
-                    } else {
-                      return null;
-                    }
+              detailed_column_list.push({
+                dataField: 'a' + index,
+                text: currentValue['name'] + ' (' + currentValue['unit_of_measure'] + ')',
+                sort: true,
+                formatter: function(decimalValue) {
+                  if (typeof decimalValue === 'number') {
+                    return decimalValue.toFixed(2);
+                  } else {
+                    return null;
                   }
                 }
-              );
+              });
             });
 
             setDetailedDataTableColumns(detailed_column_list);
@@ -277,10 +296,7 @@ const TenantBatch = ({ setRedirect, setRedirectUrl, t }) => {
               detailed_value['space'] = currentTenant['space_name'];
               detailed_value['costcenter'] = currentTenant['cost_center_name'];
               currentTenant['values'].forEach((currentValue, energyCategoryIndex) => {
-                detailed_value['a' + 2 * energyCategoryIndex] = currentValue;
-              });
-              currentTenant['maximum'].forEach((currentValue, energyCategoryIndex) => {
-                detailed_value['a' + (2 * energyCategoryIndex + 1)] = currentValue;
+                detailed_value['a' + energyCategoryIndex] = currentValue;
               });
               tenants.push(detailed_value);
             });
@@ -322,6 +338,72 @@ const TenantBatch = ({ setRedirect, setRedirectUrl, t }) => {
         link.click();
         document.body.removeChild(link);
       });
+  };
+
+  const buildSmartAnalysisContext = useCallback(() => {
+    const fixedFields = new Set(['id', 'name', 'uuid', 'space', 'costcenter']);
+    const buildBatchRowSample = row => {
+      if (!row || typeof row !== 'object') {
+        return row;
+      }
+      const sample = {
+        id: row.id,
+        name: row.name,
+        uuid: row.uuid,
+        space: row.space,
+        costcenter: row.costcenter
+      };
+      const energyCategoryValues = {};
+      let count = 0;
+      Object.keys(row).forEach(k => {
+        if (fixedFields.has(k) || count >= 20) {
+          return;
+        }
+        energyCategoryValues[k] = row[k];
+        count += 1;
+      });
+      if (Object.keys(energyCategoryValues).length) {
+        sample.energyCategoryValues = energyCategoryValues;
+      }
+      return sample;
+    };
+    const energyCategoryColumns = detailedDataTableColumns
+      .filter(c => c.dataField && !fixedFields.has(c.dataField))
+      .map(c => ({ field: c.dataField, label: c.text }))
+      .slice(0, 20);
+    const spaceDisplayName = Array.isArray(selectedSpaceName)
+      ? selectedSpaceName.join('/')
+      : selectedSpaceName ?? null;
+    return {
+      reportType: 'tenant_batch',
+      reportTitle: t('Batch Analysis'),
+      space: { id: selectedSpaceID, name: spaceDisplayName },
+      reportingPeriod: {
+        start: reportingPeriodDateRange[0]
+          ? moment(reportingPeriodDateRange[0]).format('YYYY-MM-DDTHH:mm:ss')
+          : null,
+        end: reportingPeriodDateRange[1]
+          ? moment(reportingPeriodDateRange[1]).format('YYYY-MM-DDTHH:mm:ss')
+          : null
+      },
+      batchSummary: {
+        tenantCount: tenantList.length
+      },
+      energyCategoryColumns,
+      batchDataSample: tenantList.slice(0, 80).map(buildBatchRowSample)
+    };
+  }, [
+    t,
+    selectedSpaceID,
+    selectedSpaceName,
+    reportingPeriodDateRange,
+    tenantList,
+    detailedDataTableColumns
+  ]);
+
+  const openSmartAnalysis = () => {
+    setSmartAnalysisContext(buildSmartAnalysisContext());
+    setSmartAnalysisOpen(true);
   };
 
   const nameFormatter = (dataField, { name, uuid }) => (
@@ -411,6 +493,19 @@ const TenantBatch = ({ setRedirect, setRedirectUrl, t }) => {
                   {t('Export')}
                 </ButtonIcon>
               </Col>
+              {settings.enableAIAnalysis ? (
+                <Col xs="auto">
+                  <br />
+                  <Button
+                    color="falcon-default"
+                    size="sm"
+                    hidden={exportButtonHidden}
+                    onClick={openSmartAnalysis}
+                  >
+                    {t('AI Analysis')}
+                  </Button>
+                </Col>
+              ) : null}
             </Row>
           </Form>
         </CardBody>
@@ -422,6 +517,50 @@ const TenantBatch = ({ setRedirect, setRedirectUrl, t }) => {
         <img className="img-fluid" src={blankPage} alt="" />
       </div>
       <div style={{ visibility: resultDataHidden ? 'hidden' : 'visible', display: resultDataHidden ? 'none' : '' }}>
+        <style>{`
+          .table-scroll-container thead th.tenant-batch-sticky-id,
+          .table-scroll-container tbody td.tenant-batch-sticky-id,
+          .table-scroll-container thead th.tenant-batch-sticky-name,
+          .table-scroll-container tbody td.tenant-batch-sticky-name {
+            position: sticky !important;
+            white-space: nowrap !important;
+            background-clip: padding-box !important;
+          }
+          .table-scroll-container thead th.tenant-batch-sticky-id,
+          .table-scroll-container thead th.tenant-batch-sticky-name {
+            background-color: #f8f9fa !important;
+            z-index: 12 !important;
+          }
+          .table-scroll-container tbody td.tenant-batch-sticky-id,
+          .table-scroll-container tbody td.tenant-batch-sticky-name {
+            background-color: #ffffff !important;
+            z-index: 10 !important;
+          }
+          .table-scroll-container tbody tr:hover td.tenant-batch-sticky-id,
+          .table-scroll-container tbody tr:hover td.tenant-batch-sticky-name {
+            background-color: #f1f3f5 !important;
+          }
+          .table-scroll-container tbody tr:nth-of-type(even) td.tenant-batch-sticky-id,
+          .table-scroll-container tbody tr:nth-of-type(even) td.tenant-batch-sticky-name {
+            background-color: #f1f3f5 !important;
+          }
+          .table-scroll-container tbody tr:nth-of-type(even):hover td.tenant-batch-sticky-id,
+          .table-scroll-container tbody tr:nth-of-type(even):hover td.tenant-batch-sticky-name {
+            background-color: #e9ecef !important;
+          }
+          .table-scroll-container thead th.tenant-batch-sticky-id,
+          .table-scroll-container tbody td.tenant-batch-sticky-id {
+            left: 0 !important;
+          }
+          .table-scroll-container thead th.tenant-batch-sticky-name,
+          .table-scroll-container tbody td.tenant-batch-sticky-name {
+            left: 90px !important;
+          }
+          .table-scroll-container thead th.tenant-batch-sticky-name,
+          .table-scroll-container tbody td.tenant-batch-sticky-name {
+            box-shadow: 2px 0 6px rgba(0, 0, 0, 0.12) !important;
+          }
+        `}</style>
         <DetailedDataTable
           data={tenantList}
           title={t('Detailed Data')}
@@ -429,6 +568,16 @@ const TenantBatch = ({ setRedirect, setRedirectUrl, t }) => {
           pagesize={50}
         />
       </div>
+      {settings.enableAIAnalysis ? (
+        <DeepSeekAnalysisModal
+          isOpen={smartAnalysisOpen}
+          toggle={() => setSmartAnalysisOpen(false)}
+          language={language}
+          reportContext={smartAnalysisContext}
+          setRedirect={setRedirect}
+          setRedirectUrl={setRedirectUrl}
+        />
+      ) : null}
     </Fragment>
   );
 };

@@ -203,12 +203,6 @@ class PointCollection:
         pass
 
     @staticmethod
-    def on_options(req, resp):
-        """Handle OPTIONS requests for CORS preflight"""
-        _ = req
-        resp.status = falcon.HTTP_200
-
-    @staticmethod
     def on_get(req, resp):
         """
         Handle GET requests to retrieve all points
@@ -224,7 +218,16 @@ class PointCollection:
             resp: Falcon response object
         """
         admin_control(req)
-
+        search_query = req.get_param('q', default=None)
+        if search_query is not None:
+            search_query = search_query.strip()
+        else:
+            search_query = ''
+        data_source_id = req.get_param('data_source_id', default=None)
+        if data_source_id is not None and data_source_id.isdigit() and int(data_source_id) > 0:
+            data_source_id = int(data_source_id)
+        else:
+            data_source_id = None
         # Redis cache key
         cache_key = 'point:list'
         cache_expire = 28800  # 8 hours in seconds (long-term cache)
@@ -276,7 +279,19 @@ class PointCollection:
                          "        high_limit, low_limit, higher_limit, lower_limit, ratio, offset_constant, "
                          "        is_trend, is_virtual, address, description, faults, definitions "
                          " FROM tbl_points ")
-                cursor.execute(query)
+                conditions = []
+                params = []
+                if data_source_id:
+                    conditions.append("data_source_id = %s")
+                    params.append(data_source_id)
+                if search_query:
+                    conditions.append("name LIKE %s")
+                    params.extend([f'%{search_query}%'])
+                if conditions:
+                    query += " WHERE " + " AND ".join(conditions)
+                query += " ORDER BY id "
+
+                cursor.execute(query,params)
                 rows = cursor.fetchall()
 
                 result = list()
@@ -526,12 +541,6 @@ class PointCollection:
 class PointItem:
     def __init__(self):
         pass
-
-    @staticmethod
-    def on_options(req, resp, id_):
-        _ = req
-        resp.status = falcon.HTTP_200
-        _ = id_
 
     @staticmethod
     def on_get(req, resp, id_):
@@ -909,12 +918,6 @@ class PointLimit:
         pass
 
     @staticmethod
-    def on_options(req, resp, id_):
-        _ = req
-        resp.status = falcon.HTTP_200
-        _ = id_
-
-    @staticmethod
     @user_logger
     def on_put(req, resp, id_):
         """Handles PUT requests"""
@@ -1006,12 +1009,6 @@ class PointSetValue:
         pass
 
     @staticmethod
-    def on_options(req, resp, id_):
-        _ = req
-        resp.status = falcon.HTTP_200
-        _ = id_
-
-    @staticmethod
     @user_logger
     def on_put(req, resp, id_):
         """Handles PUT requests"""
@@ -1072,12 +1069,6 @@ class PointSetValue:
 class PointExport:
     def __init__(self):
         pass
-
-    @staticmethod
-    def on_options(req, resp, id_):
-        _ = req
-        resp.status = falcon.HTTP_200
-        _ = id_
 
     @staticmethod
     def on_get(req, resp, id_):
@@ -1184,11 +1175,6 @@ class PointExport:
 class PointImport:
     def __init__(self):
         pass
-
-    @staticmethod
-    def on_options(req, resp):
-        _ = req
-        resp.status = falcon.HTTP_200
 
     @staticmethod
     @user_logger
@@ -1398,12 +1384,6 @@ class PointImport:
 class PointClone:
     def __init__(self):
         pass
-
-    @staticmethod
-    def on_options(req, resp, id_):
-        _ = req
-        resp.status = falcon.HTTP_200
-        _ = id_
 
     @staticmethod
     @user_logger

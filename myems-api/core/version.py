@@ -14,20 +14,6 @@ class VersionItem:
         pass
 
     @staticmethod
-    def on_options(req, resp, id_):
-        """
-        Handle OPTIONS request for CORS preflight
-
-        Args:
-            req: Falcon request object
-            resp: Falcon response object
-            id_: Version ID parameter (unused)
-        """
-        _ = req
-        resp.status = falcon.HTTP_200
-        _ = id_
-
-    @staticmethod
     def on_get(req, resp):
         """
         Handle GET requests to retrieve MyEMS version information
@@ -42,9 +28,8 @@ class VersionItem:
             req: Falcon request object
             resp: Falcon response object
         """
-        result = {"version": 'MyEMS v6.4.0',
-                  "release-date": '2026-04-26',
+        result = {"version": 'MyEMS v6.5.0',
+                  "release-date": '2026-05-26',
                   "licensed-to": 'COMMUNITY',
                   "website": "https://myems.cn"}
         resp.text = json.dumps(result)
-

@@ -51,11 +51,6 @@ class Reporting:
         """"Initializes Reporting"""
         pass
 
-    @staticmethod
-    def on_options(req, resp):
-        _ = req
-        resp.status = falcon.HTTP_200
-
     ####################################################################################################################
     # PROCEDURES
     # Step 1: valid parameters
@@ -223,6 +218,9 @@ class Reporting:
                         parent_node = node_dict[row[2]] if row[2] is not None else None
                         node_dict[row[0]] = AnyNode(id=row[0], parent=parent_node, name=row[1])
 
+                space_node = node_dict.get(space_id)
+                space_name = '/'.join([node.name for node in space_node.path]) if space_node is not None else space_name
+
                 ###################################################################################################
                 # Step 3: query all tenants in the space tree
                 ###################################################################################################
@@ -233,7 +231,7 @@ class Reporting:
                     space_dict[node.id] = node.name
 
                 cursor_system_db.execute(" SELECT t.id, t.name AS tenant_name, t.uuid AS tenant_uuid, "
-                                         " s.name AS space_name, "
+                                         " s.name AS space_name, s.id AS space_id, "
                                          "        cc.name AS cost_center_name, t.description "
                                          " FROM tbl_spaces s, tbl_spaces_tenants st, tbl_tenants t, "
                                          " tbl_cost_centers cc "
@@ -243,13 +241,17 @@ class Reporting:
                 rows_tenants = cursor_system_db.fetchall()
                 if rows_tenants is not None and len(rows_tenants) > 0:
                     for row in rows_tenants:
+                        current_space_id = row[4]
+                        current_space_node = node_dict.get(current_space_id)
+                        current_space_path = \
+                            '/'.join([node.name for node in current_space_node.path]) \
+                            if current_space_node is not None else row[3]
                         tenant_dict[row[0]] = {"tenant_name": row[1],
                                                "tenant_uuid": row[2],
-                                               "space_name": row[3],
-                                               "cost_center_name": row[4],
-                                               "description": row[5],
-                                               "values": list(),
-                                               "maximum": list()}
+                                               "space_name": current_space_path,
+                                               "cost_center_name": row[5],
+                                               "description": row[6],
+                                               "values": list()}
 
                 #################################################################################################
                 # Step 4: query energy categories
@@ -286,7 +288,7 @@ class Reporting:
                 # Step 5: query reporting period energy input
                 ####################################################################################################
                 for tenant_id in tenant_dict:
-                    cursor_energy_db.execute(" SELECT energy_category_id, SUM(actual_value), MAX(actual_value)"
+                    cursor_energy_db.execute(" SELECT energy_category_id, SUM(actual_value)"
                                              " FROM tbl_tenant_input_category_hourly "
                                              " WHERE tenant_id = %s "
                                              "     AND start_datetime_utc >= %s "
@@ -298,14 +300,11 @@ class Reporting:
                     rows_tenant_energy = cursor_energy_db.fetchall()
                     for energy_category in energy_category_list:
                         subtotal = Decimal(0.0)
-                        maximum = Decimal(0.0)
                         for row_tenant_energy in rows_tenant_energy:
                             if energy_category['id'] == row_tenant_energy[0]:
                                 subtotal = row_tenant_energy[1]
-                                maximum = row_tenant_energy[2] * Decimal(60 / config.minutes_to_count)
                                 break
                         tenant_dict[tenant_id]['values'].append(subtotal)
-                        tenant_dict[tenant_id]['maximum'].append(maximum)
 
             finally:
                 if cursor_system_db:
@@ -332,7 +331,6 @@ class Reporting:
                 "cost_center_name": tenant['cost_center_name'],
                 "description": tenant['description'],
                 "values": tenant['values'],
-                "maximum": tenant['maximum'],
             })
 
         result = {'tenants': tenant_list,

@@ -38,6 +38,7 @@ export const equipmentRoutes = {
   to: '/equipment',
   icon: 'cog',
   children: [
+    { to: '/equipment', name: 'Dashboard' },
     { to: '/equipment/energycategory', name: 'Energy Category Data' },
     { to: '/equipment/energyitem', name: 'Energy Item Data' },
     { to: '/equipment/carbon', name: 'Carbon' },
@@ -159,6 +160,7 @@ export const combinedEquipmentRoutes = {
   to: '/combinedequipment',
   icon: 'cogs',
   children: [
+    { to: '/combinedequipment', name: 'Dashboard' },
     { to: '/combinedequipment/energycategory', name: 'Energy Category Data' },
     { to: '/combinedequipment/energyitem', name: 'Energy Item Data' },
     { to: '/combinedequipment/carbon', name: 'Carbon' },

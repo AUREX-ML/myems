@@ -1,4 +1,4 @@
-import React, { Fragment, useEffect, useState, useContext } from 'react';
+import React, { Fragment, useEffect, useRef, useState, useContext, useCallback } from 'react';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -25,6 +25,7 @@ import withRedirect from '../../../hoc/withRedirect';
 import { withTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import ButtonIcon from '../../common/ButtonIcon';
+import DeepSeekAnalysisModal from '../common/DeepSeekAnalysisModal';
 import { APIBaseURL, settings } from '../../../config';
 import DateRangePickerWrapper from '../common/DateRangePickerWrapper';
 import { endOfDay } from 'date-fns';
@@ -103,6 +104,11 @@ const MeterBatch = ({ setRedirect, setRedirectUrl, t }) => {
   const [spinnerHidden, setSpinnerHidden] = useState(true);
   const [exportButtonHidden, setExportButtonHidden] = useState(true);
   const [resultDataHidden, setResultDataHidden] = useState(true);
+  const [smartAnalysisOpen, setSmartAnalysisOpen] = useState(false);
+  const [smartAnalysisContext, setSmartAnalysisContext] = useState(null);
+  const stickyTableWrapperRef = useRef(null);
+  const [stickySecondColumnLeft, setStickySecondColumnLeft] = useState(0);
+  const [stickyScopeClassName] = useState(() => `meter-batch-sticky-two-${Math.random().toString(36).slice(2, 10)}`);
   const nameFormatter = (dataField, { name, uuid }) => (
     <Link to={{ pathname: '/meter/meterenergy?uuid=' + uuid }} target="_blank">
       <Media tag={Flex} align="center">
@@ -112,6 +118,12 @@ const MeterBatch = ({ setRedirect, setRedirectUrl, t }) => {
       </Media>
     </Link>
   );
+  const numberTwoDecimalFormatter = value => {
+    if (value === null || value === undefined) return null;
+    const numberValue = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(numberValue)) return value;
+    return numberValue.toFixed(2);
+  };
 
   //Results
   const [detailedDataTableColumns, setDetailedDataTableColumns] = useState([
@@ -120,6 +132,53 @@ const MeterBatch = ({ setRedirect, setRedirectUrl, t }) => {
     { dataField: 'space', text: t('Space'), sort: true }
   ]);
   const [excelBytesBase64, setExcelBytesBase64] = useState(undefined);
+
+  useEffect(() => {
+    if (resultDataHidden) return;
+
+    const wrapper = stickyTableWrapperRef.current;
+    if (!wrapper) return;
+
+    let resizeObserver = null;
+    let mutationObserver = null;
+
+    const updateStickyOffsets = () => {
+      const th1 = wrapper.querySelector('.table-scroll-container thead th:nth-child(1)');
+      if (!th1) return;
+      const width1 = th1.getBoundingClientRect().width;
+      if (Number.isFinite(width1) && width1 >= 0) {
+        setStickySecondColumnLeft(width1);
+      }
+    };
+
+    const bindResizeObserver = () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+      }
+      const th1 = wrapper.querySelector('.table-scroll-container thead th:nth-child(1)');
+      if (!th1 || !window.ResizeObserver) return;
+      resizeObserver = new window.ResizeObserver(() => updateStickyOffsets());
+      resizeObserver.observe(th1);
+    };
+
+    const refresh = () => {
+      updateStickyOffsets();
+      bindResizeObserver();
+    };
+
+    const raf = window.requestAnimationFrame(refresh);
+    window.addEventListener('resize', refresh);
+    mutationObserver = new window.MutationObserver(() => refresh());
+    mutationObserver.observe(wrapper, { childList: true, subtree: true });
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('resize', refresh);
+      if (resizeObserver) resizeObserver.disconnect();
+      if (mutationObserver) mutationObserver.disconnect();
+    };
+  }, [resultDataHidden, detailedDataTableColumns, meterList]);
 
   useEffect(() => {
     let isResponseOK = false;
@@ -247,6 +306,7 @@ const MeterBatch = ({ setRedirect, setRedirectUrl, t }) => {
               currentMeter['daily_values'].forEach(dailyItem => {
                 detailed_value[dailyItem['date']] = dailyItem['value'];
               });
+              detailed_value['total'] = currentMeter['subtotal'];
               meters.push(detailed_value);
             });
           }
@@ -262,7 +322,8 @@ const MeterBatch = ({ setRedirect, setRedirectUrl, t }) => {
           detailed_column_list.push({
             dataField: 'name',
             text: t('Name'),
-            sort: true
+            sort: true,
+            formatter: nameFormatter
           });
           detailed_column_list.push({
             dataField: 'space',
@@ -278,8 +339,15 @@ const MeterBatch = ({ setRedirect, setRedirectUrl, t }) => {
             detailed_column_list.push({
               dataField: date,
               text: date,
-              sort: true
+              sort: true,
+              formatter: numberTwoDecimalFormatter
             });
+          });
+          detailed_column_list.push({
+            dataField: 'total',
+            text: t('Total'),
+            sort: true,
+            formatter: numberTwoDecimalFormatter
           });
           setDetailedDataTableColumns(detailed_column_list);
 
@@ -317,6 +385,78 @@ const MeterBatch = ({ setRedirect, setRedirectUrl, t }) => {
         link.click();
         document.body.removeChild(link);
       });
+  };
+
+  const buildSmartAnalysisContext = useCallback(() => {
+    const fixedFields = new Set(['id', 'name', 'uuid', 'space', 'energycategory', 'costcenter', 'total']);
+    const buildBatchRowSample = row => {
+      if (!row || typeof row !== 'object') {
+        return row;
+      }
+      const sample = {
+        id: row.id,
+        name: row.name,
+        space: row.space,
+        energycategory: row.energycategory,
+        costcenter: row.costcenter,
+        total: row.total
+      };
+      const dailyValues = {};
+      let count = 0;
+      Object.keys(row).forEach(k => {
+        if (fixedFields.has(k) || count >= 31) {
+          return;
+        }
+        dailyValues[k] = row[k];
+        count += 1;
+      });
+      if (Object.keys(dailyValues).length) {
+        sample.dailyValues = dailyValues;
+      }
+      return sample;
+    };
+    const dateColumns = detailedDataTableColumns
+      .map(c => c.dataField)
+      .filter(f => f && !fixedFields.has(f))
+      .slice(0, 31);
+    let totalConsumption = 0;
+    meterList.forEach(row => {
+      const value = Number(row.total);
+      if (Number.isFinite(value)) {
+        totalConsumption += value;
+      }
+    });
+    return {
+      reportType: 'meter_batch',
+      reportTitle: t('Meter Batch Analysis'),
+      space: { id: selectedSpaceID, name: selectedSpaceName },
+      reportingPeriod: {
+        start: reportingPeriodDateRange[0]
+          ? moment(reportingPeriodDateRange[0]).format('YYYY-MM-DDTHH:mm:ss')
+          : null,
+        end: reportingPeriodDateRange[1]
+          ? moment(reportingPeriodDateRange[1]).format('YYYY-MM-DDTHH:mm:ss')
+          : null
+      },
+      batchSummary: {
+        meterCount: meterList.length,
+        totalConsumption
+      },
+      dateColumns,
+      batchDataSample: meterList.slice(0, 80).map(buildBatchRowSample)
+    };
+  }, [
+    t,
+    selectedSpaceID,
+    selectedSpaceName,
+    reportingPeriodDateRange,
+    meterList,
+    detailedDataTableColumns
+  ]);
+
+  const openSmartAnalysis = () => {
+    setSmartAnalysisContext(buildSmartAnalysisContext());
+    setSmartAnalysisOpen(true);
   };
 
   return (
@@ -395,17 +535,84 @@ const MeterBatch = ({ setRedirect, setRedirectUrl, t }) => {
                   {t('Export')}
                 </ButtonIcon>
               </Col>
+              {settings.enableAIAnalysis ? (
+                <Col xs="auto">
+                  <br />
+                  <Button
+                    color="falcon-default"
+                    size="sm"
+                    hidden={exportButtonHidden}
+                    onClick={openSmartAnalysis}
+                  >
+                    {t('AI Analysis')}
+                  </Button>
+                </Col>
+              ) : null}
             </Row>
           </Form>
         </CardBody>
       </Card>
       <div
         className="blank-page-image-container"
-        style={{ visibility: resultDataHidden ? 'visible' : 'hidden', display: resultDataHidden ? '' : 'none' }}
+        style={{ display: resultDataHidden ? '' : 'none' }}
       >
         <img className="img-fluid" src={blankPage} alt="" />
       </div>
-      <div style={{ visibility: resultDataHidden ? 'hidden' : 'visible', display: resultDataHidden ? 'none' : '' }}>
+      <div
+        ref={stickyTableWrapperRef}
+        className={stickyScopeClassName}
+        style={{ display: resultDataHidden ? 'none' : '', overflowX: 'auto' }}
+      >
+        <style key={`${stickyScopeClassName}-${stickySecondColumnLeft}`}>{`
+          .${stickyScopeClassName} .table-scroll-container thead th:nth-child(1),
+          .${stickyScopeClassName} .table-scroll-container tbody td:nth-child(1) {
+            position: sticky;
+            white-space: nowrap;
+            background-clip: padding-box;
+            min-width: 72px;
+          }
+          .${stickyScopeClassName} .table-scroll-container thead th:nth-child(2),
+          .${stickyScopeClassName} .table-scroll-container tbody td:nth-child(2) {
+            position: sticky;
+            white-space: nowrap;
+            background-clip: padding-box;
+            min-width: 120px;
+          }
+          .${stickyScopeClassName} .table-scroll-container tbody td:nth-child(1) {
+            left: 0;
+            z-index: 3;
+            background-color: #ffffff;
+          }
+          .${stickyScopeClassName} .table-scroll-container tbody td:nth-child(2) {
+            left: ${stickySecondColumnLeft}px;
+            z-index: 2;
+            background-color: #ffffff;
+            border-right: 1px solid #dee2e6;
+          }
+          .${stickyScopeClassName} .table-scroll-container thead th:nth-child(1) {
+            left: 0;
+            z-index: 6;
+            background-color: #f8f9fa;
+          }
+          .${stickyScopeClassName} .table-scroll-container thead th:nth-child(2) {
+            left: ${stickySecondColumnLeft}px;
+            z-index: 5;
+            background-color: #f8f9fa;
+            border-right: 1px solid #dee2e6;
+          }
+          .${stickyScopeClassName} .table-scroll-container tbody tr:hover td:nth-child(1),
+          .${stickyScopeClassName} .table-scroll-container tbody tr:hover td:nth-child(2) {
+            background-color: #f1f3f5;
+          }
+          .${stickyScopeClassName} .table-scroll-container tbody tr:nth-of-type(even) td:nth-child(1),
+          .${stickyScopeClassName} .table-scroll-container tbody tr:nth-of-type(even) td:nth-child(2) {
+            background-color: #f1f3f5;
+          }
+          .${stickyScopeClassName} .table-scroll-container tbody tr:nth-of-type(even):hover td:nth-child(1),
+          .${stickyScopeClassName} .table-scroll-container tbody tr:nth-of-type(even):hover td:nth-child(2) {
+            background-color: #e9ecef;
+          }
+        `}</style>
         <DetailedDataTable
           data={meterList}
           title={t('Detailed Data')}
@@ -414,6 +621,16 @@ const MeterBatch = ({ setRedirect, setRedirectUrl, t }) => {
           enableHorizontalScroll={true}
         />
       </div>
+      {settings.enableAIAnalysis ? (
+        <DeepSeekAnalysisModal
+          isOpen={smartAnalysisOpen}
+          toggle={() => setSmartAnalysisOpen(false)}
+          language={language}
+          reportContext={smartAnalysisContext}
+          setRedirect={setRedirect}
+          setRedirectUrl={setRedirectUrl}
+        />
+      ) : null}
     </Fragment>
   );
 };

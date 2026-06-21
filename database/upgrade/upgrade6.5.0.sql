@@ -11,18 +11,17 @@ START TRANSACTION;
 
 INSERT INTO myems_system_db.tbl_menus (id,name,route, parent_menu_id,is_hidden)
 VALUES
-(329,'Offline Meter Prediction','/meter/offlinemeterprediction',300,1);
+(216, 'Dashboard', '/equipment', 200, 0),
+(329,'Offline Meter Prediction','/meter/offlinemeterprediction',300,1),
+(413, 'Dashboard', '/tenant', 400, 0),
+(512, 'Dashboard', '/store', 500, 0),
+(612, 'Dashboard', '/shopfloor', 600, 0),
+(715, 'Dashboard', '/combinedequipment', 700, 0);
 
-INSERT INTO `tbl_menus` (`id`, `name`, `route`, `parent_menu_id`, `is_hidden`)
-VALUES (512, 'Dashboard', '/store', 500, 0);
-INSERT INTO `tbl_menus` (`id`, `name`, `route`, `parent_menu_id`, `is_hidden`)
-VALUES (413, 'Dashboard', '/tenant', 400, 0);
-INSERT INTO `myems_system_db`.`tbl_menus` (`id`, `name`, `route`, `parent_menu_id`, `is_hidden`)
-VALUES (612, 'Dashboard', '/shopfloor', 600, 0);
+UPDATE `myems_system_db`.`tbl_menus`
+SET `route` = '/meter/virtualmeterprediction' WHERE `id` = 328;
 
-
-UPDATE `myems_system_db`.`tbl_menus` SET `route` = '/meter/virtualmeterprediction' WHERE `id` = 328;
-
-UPDATE `myems_system_db`.`tbl_versions` SET version='6.5.0RC', release_date='2026-05-26' WHERE id=1;
+UPDATE `myems_system_db`.`tbl_versions`
+SET version='6.5.0', release_date='2026-05-26' WHERE id=1;
 
 COMMIT;
