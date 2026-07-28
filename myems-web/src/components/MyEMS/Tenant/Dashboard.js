@@ -25,6 +25,7 @@ import {
   Legend
 } from 'chart.js';
 import {Line, Bar} from 'react-chartjs-2';
+import {Link} from 'react-router-dom';
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome';
 import {
   faArrowUp,
@@ -67,7 +68,6 @@ const Dashboard = ({setRedirect, setRedirectUrl, t}) => {
     subtotals: [],
     subtotals_in_kgce: [],
     subtotals_in_kgco2e: [],
-    increment_rates: [],
     timestamps: [],
     values: []
   });
@@ -76,7 +76,6 @@ const Dashboard = ({setRedirect, setRedirectUrl, t}) => {
     names: [],
     units: [],
     subtotals: [],
-    increment_rates: [],
     timestamps: [],
     values: []
   });
@@ -125,8 +124,6 @@ const Dashboard = ({setRedirect, setRedirectUrl, t}) => {
       const params = new URLSearchParams({
         useruuid: user_uuid,
         periodtype: periodType,
-        baseperiodstartdatetime: basePeriodStart.format('YYYY-MM-DDTHH:mm:ss'),
-        baseperiodenddatetime: basePeriodEnd.format('YYYY-MM-DDTHH:mm:ss'),
         reportingperiodstartdatetime: reportingPeriodStart.format('YYYY-MM-DDTHH:mm:ss'),
         reportingperiodenddatetime: reportingPeriodEnd.format('YYYY-MM-DDTHH:mm:ss')
       });
@@ -246,6 +243,10 @@ const Dashboard = ({setRedirect, setRedirectUrl, t}) => {
       let aValue, bValue;
 
       switch (sortConfig.key) {
+        case 'id':
+          aValue = a.id;
+          bValue = b.id;
+          break;
         case 'name':
           aValue = a.name;
           bValue = b.name;
@@ -382,8 +383,7 @@ const Dashboard = ({setRedirect, setRedirectUrl, t}) => {
           </CardSummary>
 
           <CardSummary
-              rate={energyData.increment_rate_in_kgce !== undefined ?
-                  (parseFloat(energyData.increment_rate_in_kgce * 100).toFixed(2) + '%') : null}
+              rate={null}
               title={t("This Month's Consumption CATEGORY VALUE UNIT", {
                 CATEGORY: t('Ton of Standard Coal'),
                 VALUE: null,
@@ -399,7 +399,7 @@ const Dashboard = ({setRedirect, setRedirectUrl, t}) => {
           </CardSummary>
 
           <CardSummary
-              rate={costData.subtotals && costData.subtotals.length > 0 ? '+0.00%' : null}
+              rate={costData.subtotals && costData.subtotals.length > 0 ? null : null}
               title={t("This Month's Costs CATEGORY VALUE UNIT", {
                 CATEGORY: null,
                 VALUE: null,
@@ -415,8 +415,7 @@ const Dashboard = ({setRedirect, setRedirectUrl, t}) => {
           </CardSummary>
 
           <CardSummary
-              rate={energyData.increment_rate_in_kgco2e !== undefined ?
-                  (parseFloat(energyData.increment_rate_in_kgco2e * 100).toFixed(2) + '%') : null}
+              rate={null}
               title={t("This Month's Consumption CATEGORY VALUE UNIT", {
                 CATEGORY: t('Ton of Carbon Dioxide Emissions'),
                 VALUE: null,
@@ -476,7 +475,17 @@ const Dashboard = ({setRedirect, setRedirectUrl, t}) => {
                   <table className="table table-hover">
                     <thead className="thead-light">
                     <tr>
-                      <th 
+                      <th
+                        style={{width: '5%', cursor: 'pointer'}}
+                        onClick={() => handleSort('id')}
+                      >
+                        {t('ID')}
+                        <FontAwesomeIcon
+                          icon={sortConfig.key === 'id' ? (sortConfig.direction === 'asc' ? faSortUp : faSortDown) : faSort}
+                          className="ml-1"
+                        />
+                      </th>
+                      <th
                         onClick={() => handleSort('name')}
                         style={{cursor: 'pointer'}}
                       >
@@ -551,7 +560,12 @@ const Dashboard = ({setRedirect, setRedirectUrl, t}) => {
                       return (
                         <tr key={tenant.id}>
                           <td>
-                            <strong>{tenant.name}</strong>
+                            <strong>{tenant.id}</strong>
+                          </td>
+                          <td>
+                            <Link to={'/tenant/energycategory?uuid=' + tenant.uuid} target="_blank" rel="noopener noreferrer">
+                              <strong>{tenant.name}</strong>
+                            </Link>
                           </td>
                           <td className="text-muted">{tenant.tenant_type || '-'}</td>
                           <td className="text-right">{tenant.area ? tenant.area.toFixed(2) : '-'}</td>

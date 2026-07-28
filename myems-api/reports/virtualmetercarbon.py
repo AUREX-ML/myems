@@ -70,7 +70,6 @@ class Reporting:
             access_control(req)
         else:
             api_key_control(req)
-        print(req.params)
         virtual_meter_id = req.params.get('virtualmeterid')
         virtual_meter_uuid = req.params.get('virtualmeteruuid')
         period_type = req.params.get('periodtype')
@@ -491,7 +490,7 @@ class Reporting:
                 "cost_center_id": virtual_meter['cost_center_id'],
                 "energy_category_id": virtual_meter['energy_category_id'],
                 "energy_category_name": virtual_meter['energy_category_name'],
-                "unit_of_measure": 'KG',
+                "unit_of_measure": 'KGCO2E',
                 "kgce": virtual_meter['kgce'],
                 "kgco2e": virtual_meter['kgco2e'],
             },

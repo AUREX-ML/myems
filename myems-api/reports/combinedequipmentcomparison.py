@@ -11,7 +11,6 @@ import config
 import excelexporters.combinedequipmentcomparison
 from core import utilities
 from core.useractivity import access_control, api_key_control
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,6 @@ class Reporting:
             access_control(req)
         else:
             api_key_control(req)
-        print(req.params)
         # this procedure accepts combined equipment id or combined equipment uuid to identify a combined equipment
         combined_equipment_id1 = req.params.get("combinedequipmentid1")
         combined_equipment_uuid1 = req.params.get("combinedequipmentuuid1")

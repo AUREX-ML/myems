@@ -12,8 +12,8 @@ export const spaceRoutes = {
   name: 'Space Data',
   to: '/space',
   icon: 'building',
-  exact: true,
   children: [
+    { to: '/space', name: 'Dashboard' },
     { to: '/space/energycategory', name: 'Energy Category Data' },
     { to: '/space/energyitem', name: 'Energy Item Data' },
     { to: '/space/carbon', name: 'Carbon' },
@@ -62,6 +62,7 @@ export const meterRoutes = {
   to: '/meter',
   icon: 'chart-pie',
   children: [
+    { to: '/meter', name: 'Dashboard' },
     { to: '/meter/meterenergy', name: 'Meter Energy' },
     { to: '/meter/metercarbon', name: 'Meter Carbon' },
     { to: '/meter/metercost', name: 'Meter Cost' },

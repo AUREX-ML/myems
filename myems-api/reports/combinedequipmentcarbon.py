@@ -44,7 +44,6 @@ import config
 import excelexporters.combinedequipmentcarbon
 from core import utilities
 from core.useractivity import access_control, api_key_control
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +76,6 @@ class Reporting:
             access_control(req)
         else:
             api_key_control(req)
-        print(req.params)
         combined_equipment_id = req.params.get('combinedequipmentid')
         combined_equipment_uuid = req.params.get('combinedequipmentuuid')
         period_type = req.params.get('periodtype')
@@ -520,68 +518,18 @@ class Reporting:
             # Step 9: query associated points data
             ################################################################################################
             if not is_quick_mode:
-                for point in point_list:
-                    point_values = []
-                    point_timestamps = []
-                    if point['object_type'] == 'ENERGY_VALUE':
-                        query = (" SELECT utc_date_time, actual_value "
-                                 " FROM tbl_energy_value "
-                                 " WHERE point_id = %s "
-                                 "       AND utc_date_time BETWEEN %s AND %s "
-                                 " ORDER BY utc_date_time ")
-                        cursor_historical.execute(query, (point['id'],
-                                                          reporting_start_datetime_utc,
-                                                          reporting_end_datetime_utc))
-                        rows = cursor_historical.fetchall()
 
-                        if rows is not None and len(rows) > 0:
-                            for row in rows:
-                                current_datetime_local = row[0].replace(tzinfo=timezone.utc) + \
-                                                         timedelta(minutes=timezone_offset)
-                                current_datetime = current_datetime_local.isoformat()[0:19]
-                                point_timestamps.append(current_datetime)
-                                point_values.append(row[1])
-                    elif point['object_type'] == 'ANALOG_VALUE':
-                        query = (" SELECT utc_date_time, actual_value "
-                                 " FROM tbl_analog_value "
-                                 " WHERE point_id = %s "
-                                 "       AND utc_date_time BETWEEN %s AND %s "
-                                 " ORDER BY utc_date_time ")
-                        cursor_historical.execute(query, (point['id'],
-                                                          reporting_start_datetime_utc,
-                                                          reporting_end_datetime_utc))
-                        rows = cursor_historical.fetchall()
+                point_data = utilities.build_parameters_data_from_batch(
 
-                        if rows is not None and len(rows) > 0:
-                            for row in rows:
-                                current_datetime_local = row[0].replace(tzinfo=timezone.utc) + \
-                                                         timedelta(minutes=timezone_offset)
-                                current_datetime = current_datetime_local.isoformat()[0:19]
-                                point_timestamps.append(current_datetime)
-                                point_values.append(row[1])
-                    elif point['object_type'] == 'DIGITAL_VALUE':
-                        query = (" SELECT utc_date_time, actual_value "
-                                 " FROM tbl_digital_value "
-                                 " WHERE point_id = %s "
-                                 "       AND utc_date_time BETWEEN %s AND %s "
-                                 " ORDER BY utc_date_time ")
-                        cursor_historical.execute(query, (point['id'],
-                                                          reporting_start_datetime_utc,
-                                                          reporting_end_datetime_utc))
-                        rows = cursor_historical.fetchall()
+                    point_list, reporting_start_datetime_utc, reporting_end_datetime_utc,
 
-                        if rows is not None and len(rows) > 0:
-                            for row in rows:
-                                current_datetime_local = row[0].replace(tzinfo=timezone.utc) + \
-                                                         timedelta(minutes=timezone_offset)
-                                current_datetime = current_datetime_local.isoformat()[0:19]
-                                point_timestamps.append(current_datetime)
-                                point_values.append(row[1])
+                    cursor_historical, timezone_offset)
 
-                    parameters_data['names'].append(point['name'] + ' (' + point['units'] + ')')
-                    parameters_data['timestamps'].append(point_timestamps)
-                    parameters_data['values'].append(point_values)
+                parameters_data['names'].extend(point_data['names'])
 
+                parameters_data['timestamps'].extend(point_data['timestamps'])
+
+                parameters_data['values'].extend(point_data['values'])
             ################################################################################################
             # Step 10: query associated equipments energy carbon dioxide emissions
             ################################################################################################
@@ -661,7 +609,7 @@ class Reporting:
         if energy_category_set is not None and len(energy_category_set) > 0:
             for energy_category_id in energy_category_set:
                 result['base_period']['names'].append(energy_category_dict[energy_category_id]['name'])
-                result['base_period']['units'].append('KG')
+                result['base_period']['units'].append('KGCO2E')
                 result['base_period']['timestamps'].append(base[energy_category_id]['timestamps'])
                 result['base_period']['values'].append(base[energy_category_id]['values'])
                 result['base_period']['subtotals'].append(base[energy_category_id]['subtotal'])
@@ -683,13 +631,13 @@ class Reporting:
         result['reporting_period']['increment_rates'] = list()
         result['reporting_period']['total'] = Decimal(0.0)
         result['reporting_period']['total_increment_rate'] = Decimal(0.0)
-        result['reporting_period']['total_unit'] = 'KG'
+        result['reporting_period']['total_unit'] = 'KGCO2E'
 
         if energy_category_set is not None and len(energy_category_set) > 0:
             for energy_category_id in energy_category_set:
                 result['reporting_period']['names'].append(energy_category_dict[energy_category_id]['name'])
                 result['reporting_period']['energy_category_ids'].append(energy_category_id)
-                result['reporting_period']['units'].append('KG')
+                result['reporting_period']['units'].append('KGCO2E')
                 result['reporting_period']['timestamps'].append(reporting[energy_category_id]['timestamps'])
                 result['reporting_period']['values'].append(reporting[energy_category_id]['values'])
                 result['reporting_period']['subtotals'].append(reporting[energy_category_id]['subtotal'])
@@ -701,7 +649,7 @@ class Reporting:
                 result['reporting_period']['increment_rates'].append(
                     (reporting[energy_category_id]['subtotal'] - base[energy_category_id]['subtotal']) /
                     base[energy_category_id]['subtotal']
-                    if base[energy_category_id]['subtotal'] > 0.0 else None)
+                    if base[energy_category_id]['subtotal'] > Decimal('0.0') else None)
                 result['reporting_period']['total'] += reporting[energy_category_id]['subtotal']
 
                 rate = list()
@@ -729,16 +677,21 @@ class Reporting:
         result['associated_equipment']['units'] = list()
         result['associated_equipment']['associated_equipment_names_array'] = list()
         result['associated_equipment']['subtotals_array'] = list()
-        result['associated_equipment']['total_unit'] = 'KG'
+        result['associated_equipment']['total_unit'] = 'KGCO2E'
         if energy_category_set is not None and len(energy_category_set) > 0:
             for energy_category_id in energy_category_set:
                 result['associated_equipment']['energy_category_names'].append(
                     energy_category_dict[energy_category_id]['name'])
-                result['associated_equipment']['units'].append('KG')
+                result['associated_equipment']['units'].append('KGCO2E')
                 result['associated_equipment']['associated_equipment_names_array'].append(
                     associated_equipment_data[energy_category_id]['associated_equipment_names'])
                 result['associated_equipment']['subtotals_array'].append(
                     associated_equipment_data[energy_category_id]['subtotals'])
+
+        result['associated_equipment']['associated_equipment_ids'] = [
+            e.get('id', i) if isinstance(e, dict) else i
+            for i, e in enumerate(associated_equipment_list)
+        ]
 
         # export result to Excel file and then encode the file to base64 string
         result['excel_bytes_base64'] = None

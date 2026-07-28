@@ -1,4 +1,3 @@
-import falcon
 import simplejson as json
 
 
@@ -28,8 +27,8 @@ class VersionItem:
             req: Falcon request object
             resp: Falcon response object
         """
-        result = {"version": 'MyEMS v6.5.0',
-                  "release-date": '2026-05-26',
+        result = {"version": 'MyEMS v6.7.0',
+                  "release-date": '2026-07-26',
                   "licensed-to": 'COMMUNITY',
                   "website": "https://myems.cn"}
         resp.text = json.dumps(result)

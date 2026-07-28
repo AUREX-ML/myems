@@ -961,6 +961,7 @@ VALUES
 (114,'Enter Production','/space/enterproduction',100,1),
 (115,'Prediction','/space/prediction',100,1),
 (116,'Space Comparison','/space/comparison',100,0),
+(117,'Dashboard','/space',100,0),
 (200,'Equipment Data','/equipment',NULL,0),
 (201,'Energy Category Data','/equipment/energycategory',200,0),
 (202,'Energy Item Data','/equipment/energyitem',200,0),
@@ -1008,6 +1009,7 @@ VALUES
 (327,'Meter Prediction','/meter/meterprediction',300,1),
 (328,'Virtual Meter Prediction','/meter/virtualmeterprediction',300,1),
 (329,'Offline Meter Prediction','/meter/offlinemeterprediction',300,1),
+(330,'Dashboard','/meter',300,0)
 (400,'Tenant Data','/tenant',NULL,0),
 (401,'Energy Category Data','/tenant/energycategory',400,0),
 (402,'Energy Item Data','/tenant/energyitem',400,0),
@@ -2756,7 +2758,7 @@ CREATE TABLE IF NOT EXISTS `myems_system_db`.`tbl_versions` (
 INSERT INTO `myems_system_db`.`tbl_versions`
 (`id`, `version`, `release_date`)
 VALUES
-(1, '6.5.0', '2026-05-26');
+(1, '6.8.0RC', '2026-08-26');
 
 -- ---------------------------------------------------------------------------------------------------------------------
 -- Table `myems_system_db`.`tbl_wind_farms`

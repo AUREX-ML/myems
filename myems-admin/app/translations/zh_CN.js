@@ -222,6 +222,7 @@
           ENERGY_FLOW_DIAGRAM: "能流图",
           DISTRIBUTION_SYSTEM: "配电系统",
           MENU: "菜单",
+          DOWNLOAD_OFFLINE_METER_TEMPLATE: "下载离线表模板",
           KNOWLEDGEFILE: "知识库",
           WORKING_CALENDAR: "工作日历",
           COMMAND: "指令 ㊭",
@@ -436,6 +437,11 @@
         BIND_METER: "绑定计量表",
         BIND_METER_DESCRIPTION: "设备与计量表关联管理；将物理仪表绑定到对应的用能设备上。",
         BIND_METER_DESCRIPTION_MORE: "在此界面，您可以将计量表绑定到具体的设备上。操作方法：首先在左侧选择目标设备，然后在右侧找到对应的计量表，通过鼠标拖拽的方式将其移动到中间的“已绑定计量表”区域。如需解除绑定，将计量表拖拽至下方的回收站图标即可。",
+        METER_ALREADY_BOUND_TO_OTHER_SPACE: "该计量表已绑定到其他空间",
+        VIRTUAL_METER_ALREADY_BOUND_TO_OTHER_SPACE: "该虚拟表已绑定到其他空间",
+        OFFLINE_METER_ALREADY_BOUND_TO_OTHER_SPACE: "该离线表已绑定到其他空间",
+        CONFIRM_BIND_METER: "确认绑定",
+        CONFIRM_BIND_METER_MESSAGE: "此计量表已绑定到{0} \"{1}\"。是否继续绑定到当前{2}？（一个计量表绑定到多个{3}可能导致重复计算）",
         BIND_PARAMETER: "绑定参数",
         BIND_PARAMETER_DESCRIPTION: "设备工艺参数管理；为耗能设备配置关键的运行指标或技术参数。",
         BIND_PARAMETER_DESCRIPTION_MORE: "在此界面，您可以为设备定义各种工艺参数（如额定功率、设计温差等）。参数可以来源于一个固定的数值、一个实时数据点，或者是两个计量表的比值。合理配置工艺参数是进行能效对标和高级报表分析的基础。这些参数将作为计算设备理论能耗或效率的关键输入。",
@@ -767,6 +773,7 @@
         DATA_REPAIR_FILE: "数据修补文件",
         DATA_REPAIR_FILE_DESCRIPTION: "数据修补文件管理；上传并执行历史数据修复或手工补录文件。",
         DATA_REPAIR_FILE_DESCRIPTION_MORE: "当现场采集由于网络中断等原因出现长时间数据缺失，或者需要修正错误的历史数值时，您可以使用数据修补功能。请按照系统要求的Excel模板格式准备数据，并将文件拖拽至上传区域。上传后点击“恢复”按钮，系统将解析文件并覆盖对应时间段的数据库记录。请务必在操作前备份原始数据，并确保文件中的时间戳和数据点ID准确无误。",
+        DOWNLOAD_DATA_REPAIR_TEMPLATE: "下载数据修补模板",
 
         WORKING_CALENDAR: "工作日历",
         NON_WORKING_DAY: "非工作日",
@@ -1952,6 +1959,8 @@
           "能流图链接已使用",
         ENERGY_FLOW_DIAGRAM_LINK_NOT_FOUND_OR_NOT_MATCH:
           "能流图链接不存在或不匹配",
+        ENERGY_FLOW_DIAGRAM_LINK_WOULD_CREATE_CYCLE:
+          "能流图链接将形成循环，禁止保存",
         ENERGY_FLOW_DIAGRAM_NAME_IS_ALREADY_IN_USE: "能流图名称已使用",
         ENERGY_FLOW_DIAGRAM_NODE_NAME_IS_ALREADY_IN_USE: "能流图节点名称已使用",
         ENERGY_FLOW_DIAGRAM_NODE_NOT_FOUND_OR_NOT_MATCH:
@@ -2239,6 +2248,7 @@
         INVALID_PRIVILEGE_DATA: "无效的权限数据",
         INVALID_PRIVILEGE_ID: "无效的权限ID",
         INVALID_PRIVILEGE_NAME: "无效的权限名称",
+        SUPER_ADMIN_ACCOUNT_IS_PROTECTED: "当前账号无权限修改超级管理员账号",
         INVALID_PROTOCOL_CODE: "无效的协议代码",
         INVALID_PROTOCOL_ID: "无效的协议ID",
         INVALID_PROTOCOL_NAME: "无效的协议名称",

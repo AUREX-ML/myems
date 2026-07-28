@@ -648,6 +648,7 @@ const MeterTrend = ({ setRedirect, setRedirectUrl, t }) => {
           labels={meterLineChartLabels}
           data={meterLineChartData}
           options={meterLineChartOptions}
+          yAxisScale={true}
         />
 
         <MultipleLineChart
@@ -656,6 +657,7 @@ const MeterTrend = ({ setRedirect, setRedirectUrl, t }) => {
           labels={parameterLineChartLabels}
           data={parameterLineChartData}
           options={parameterLineChartOptions}
+          yAxisScale={true}
         />
         <br />
         <DetailedDataTable

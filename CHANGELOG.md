@@ -5,8 +5,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Added
+- added meter dashboard to myems-api and myems-web
+### Changed
+- changed carbon unit to KGCO2E in myems-api
+### Fixed
+- fixed issue of meter realtime report in myems-web
+### Removed
+
+## [v6.7.0] - 2026-07-26
+### Added
+- added circle check to energy flow diagram in myems-api and myems-admin
+- added duplicate check for binding meter to space in myems-api and myems-admin
+- added duplicate check for binding meter to shopfloor in myems-api and myems-admin
+- added duplicate check for binding meter to combined equipment in myems-api and myems-admin
+- added duplicate check for binding meter to equipment in myems-api and myems-admin
+- added duplicate check for binding meter to store in myems-api and myems-admin
+- added duplicate check for binding meter to tenant in myems-api and myems-admin
+- added myems_production_db.tbl_equipment_hourly to database
+- added modification protection for super administrator in myems-api and myems-admin
+- added yAxisScale attribute to the MultipleLineChart component to control the scale configuration of the ECharts Y-axis in myems-web
+- added ID to equipment list in combined equipment reports
+- added space dashboard to myems-api and myems-web
+- added min/max/avg to trend chart in myems-web
+### Changed
+- changed component import method from static to dynamic imports in myems-web
+- added ErrorBoundary component to capture rendering errors in myems-web
+- upgraded echarts version in myems-web
+- updated meter realtime report in myems-web
+- updated deepseek api url and model
+### Fixed
+- fixed Overwritten property issue in myems-web
+- fixed datetime picker color theme issue in myems-web
+- fixed parameters_data issues in myems-api
+- fixed issues of combinedequipmentdashboard, equipmentdashboard, shopfloordashboard, storedashboard and tenantdashboard in myems-api
+- fixed issue of combined equipment load excel exporter in myems-api
+### Removed
+- removed print(req.params) from myems-api
+
+## [v6.6.0] - 2026-06-26
+### Added
 - added search box to data point page in myems-admin
 - added deepseek AI analysis to reports in myems-web
+- added map to store dashboard in myems-web
+- added offline_meter_data.xlsx download link to myems-admin
+- added data_repair_sample.xlsx download link to myems-admin
+- added hytper link to name in equipment dashboard in myems-web and myems-api
+- added yAxisScale to Operating Characteristic Curve in myems-web
+- added hytper link to name in store dashboard in myems-web and myems-api
+- added hytper link to name in shopfloor dashboard in myems-web and myems-api
+- added hytper link to name in combined equipment dashboard in myems-web and myems-api
+- added hytper link to name in tenant dashboard in myems-web and myems-api
+- added api_key_control to deepseek_chat in myems-api
 ### Changed
 - updated meter batch report in myems-api and myems-web
 - updated virtual meter batch report in myems-api and myems-web
@@ -18,15 +67,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - updated login form in myems-web
 - updated knowledge file page in myems-web
 - updated user activity logger in myems-api
+- replaced datetime.utcnow() with datetime.now(timezone.utc)
+- optimized multiple N+1 queries into batch queries in myems-api
+- updated translations in myems-admin
+- updated meter realtime in myems-web
 ### Fixed
-- fixed add/edit user issue in myems-admin 
+- fixed add/edit user issue in myems-admin
 - fixed issue of DateRangePickerWrapper in myems-web
 - fixed issue of MeterSubmetersBalance in myems-web
 - fixed issue of shopfloor prediction report in myems-api
 - fixed typo of file name in myems-aggregation
+- fixed issue of EnergyFlowDiagram in myems-web
 ### Removed
 - removed unused function from carbon_dioxide_emission_factor in myems-aggregation
-- remvoed falcon-cors middleware and on_options methods from myems-api
+- removed falcon-cors middleware and on_options methods from myems-api
 
 ## [v6.5.0] - 2026-05-26
 ### Added
@@ -2296,7 +2350,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Removed
 -   None.
 
-[Unreleased]: https://gitee.com/MyEMS/myems/compare/v6.5.0...HEAD
+[Unreleased]: https://gitee.com/MyEMS/myems/compare/v6.7.0...HEAD
+[6.7.0]: https://gitee.com/MyEMS/myems/compare/v6.6.0...v6.7.0
+[6.6.0]: https://gitee.com/MyEMS/myems/compare/v6.5.0...v6.6.0
 [6.5.0]: https://gitee.com/MyEMS/myems/compare/v6.4.0...v6.5.0
 [6.4.0]: https://gitee.com/MyEMS/myems/compare/v6.3.0...v6.4.0
 [6.3.0]: https://gitee.com/MyEMS/myems/compare/v6.2.0...v6.3.0

@@ -4,7 +4,7 @@ from falcon_multipart.middleware import MultipartMiddleware
 # for debugging this api on Linux or macOS
 from wsgiref import simple_server
 
-from ai import deepseek_chat
+from ai import deepseek
 from core import advancedreport, apikey, command, controlmode, energyflowdiagram, \
     privilege, textmessage, distributioncircuit, virtualmeter, \
     costcenter, point, knowledgefile, meter, tariff, user, storetype, timezone, \
@@ -90,6 +90,7 @@ from reports import meterplan
 from reports import metersaving
 from reports import metersubmetersbalance
 from reports import metertracking
+from reports import meterdashboard
 from reports import metertrend
 from reports import powerquality
 from reports import microgriddashboard
@@ -150,6 +151,7 @@ from reports import shopfloorsaving
 from reports import shopfloorstatistics
 from reports import spacecarbon
 from reports import spacecost
+from reports import spacedashboard
 from reports import spaceefficiency
 from reports import spaceenergycategory
 from reports import spaceenergyitem
@@ -224,7 +226,7 @@ api.add_route('/advancedreports/{id_}/clone',
               advancedreport.AdvancedReportClone())
 
 api.add_route('/ai/deepseek/chat',
-              deepseek_chat.DeepSeekChat())
+              deepseek.DeepSeekChat())
 
 api.add_route('/combinedequipments',
               combinedequipment.CombinedEquipmentCollection())
@@ -545,7 +547,7 @@ api.add_route('/equipments/{id_}/clone',
 
 api.add_route('/equipments/{id_}/datasources',
               equipment.EquipmentDataSourceCollection())
-api.add_route('/equipments/{id_}/datasources/{dsid}', 
+api.add_route('/equipments/{id_}/datasources/{dsid}',
               equipment.EquipmentDataSourceItem())
 api.add_route('/equipments/{id_}/addpoints',
               equipment.EquipmentAddPointsCollection())
@@ -606,7 +608,18 @@ api.add_route('/meters/import',
               meter.MeterImport())
 api.add_route('/meters/{id_}/clone',
               meter.MeterClone())
-
+api.add_route('/meters/{id_}/spaces',
+              space.MeterSpaceCollection())
+api.add_route('/meters/{id_}/shopfloors',
+              shopfloor.MeterShopfloorCollection())
+api.add_route('/meters/{id_}/stores',
+              store.MeterStoreCollection())
+api.add_route('/meters/{id_}/tenants',
+              tenant.MeterTenantCollection())
+api.add_route('/meters/{id_}/equipments',
+              equipment.MeterEquipmentCollection())
+api.add_route('/meters/{id_}/combinedequipments',
+              combinedequipment.MeterCombinedEquipmentCollection())
 
 api.add_route('/microgrids',
               microgrid.MicrogridCollection())
@@ -894,6 +907,7 @@ api.add_route('/spaces/{id_}/meters',
               space.SpaceMeterCollection())
 api.add_route('/spaces/{id_}/meters/{mid}',
               space.SpaceMeterItem())
+
 api.add_route('/spaces/{id_}/microgrids',
               space.SpaceMicrogridCollection())
 api.add_route('/spaces/{id_}/microgrids/{mid}',
@@ -1339,6 +1353,8 @@ api.add_route('/reports/metertrend',
               metertrend.Reporting())
 api.add_route('/reports/metertracking',
               metertracking.Reporting())
+api.add_route('/reports/meterdashboard',
+              meterdashboard.Reporting())
 api.add_route('/reports/microgriddashboard',
               microgriddashboard.Reporting())
 api.add_route('/reports/microgriddetails',
@@ -1460,6 +1476,8 @@ api.add_route('/reports/spacecarbon',
               spacecarbon.Reporting())
 api.add_route('/reports/spacecost',
               spacecost.Reporting())
+api.add_route('/reports/spacedashboard',
+              spacedashboard.Reporting())
 api.add_route('/reports/spaceefficiency',
               spaceefficiency.Reporting())
 api.add_route('/reports/spaceenergycategory',

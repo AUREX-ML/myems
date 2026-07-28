@@ -3,14 +3,14 @@ Tenant Dashboard Report API - Redesigned
 
 This module provides REST API endpoints for generating comprehensive tenant dashboard reports.
 It aggregates data from multiple sources including tenants, energy categories, sensors,
-and child Tenant s to provide a complete overview of tenant energy consumption and performance.
+and child tenants to provide a complete overview of tenant energy consumption and performance.
 
 Key Features:
 - Multi-tenant energy consumption analysis
 - Energy category breakdown and trends
 - Sensor data integration and monitoring
-- Child Tenant  hierarchy analysis
-- Base period vs reporting period comparison
+- Child Tenant hierarchy analysis
+- Reporting period energy consumption analysis
 - Real-time data processing
 - Carbon emissions tracking
 - Cost analysis and optimization insights
@@ -20,7 +20,7 @@ Report Components:
 - Energy input analysis by category
 - Energy cost calculations and trends
 - Carbon emissions tracking
-- Child Tenant  consumption breakdown
+- Child Tenant consumption breakdown
 - Sensor monitoring data
 - Performance metrics and KPIs
 - Time-of-use analysis
@@ -36,12 +36,12 @@ The module uses Falcon framework for REST API and includes:
 
 import logging
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 import hashlib
 import falcon
 import mysql.connector
 import redis
 import simplejson as json
+from anytree import AnyNode, LevelOrderIter
 import config
 from core import utilities
 from core.useractivity import access_control, api_key_control
@@ -52,11 +52,11 @@ logger = logging.getLogger(__name__)
 def validate_integer_ids(id_list, param_name="IDs"):
     """
     Validate that all IDs in the list are integers to prevent SQL injection.
-    
+
     Args:
         id_list: List of IDs to validate
         param_name: Name of the parameter for error messages
-        
+
     Raises:
         ValueError: If any ID is not an integer
     """
@@ -77,17 +77,12 @@ class Reporting:
     # Step 1: Validate parameters
     # Step 2: Query user and get associated tenants
     # Step 3: Query energy categories
-    # Step 4: Query base period energy input by category
-    # Step 5: Query reporting period energy input by category
-    # Step 6: Query base period energy cost by category
-    # Step 7: Query reporting period energy cost by category
-    # Step 8: Query carbon emissions data
-    # Step 9: Query time-of-use data (for electricity)
-    # Step 10: Query daily trends (energy & cost) from 1st of last month
-    # Step 11: Query tenant statistics (meters, sensors, alerts)
-    # Step 12: Query top consuming tenants
-    # Step 13: Query real-time sensor data
-    # Step 14: Construct the report
+    # Step 4: Query reporting period energy input by category
+    # Step 5: Query reporting period energy cost by category
+    # Step 6: Query daily trends (energy & cost) from 1st of last month
+    # Step 7: Query tenant statistics (meters, sensors, alerts)
+    # Step 8: Query top consuming tenants
+    # Step 9: Construct the report
     ####################################################################################################################
     @staticmethod
     def on_get(req, resp):
@@ -100,8 +95,6 @@ class Reporting:
 
         user_uuid = req.params.get('useruuid')
         period_type = req.params.get('periodtype', 'monthly')
-        base_period_start_datetime_local = req.params.get('baseperiodstartdatetime')
-        base_period_end_datetime_local = req.params.get('baseperiodenddatetime')
         reporting_period_start_datetime_local = req.params.get('reportingperiodstartdatetime')
         reporting_period_end_datetime_local = req.params.get('reportingperiodenddatetime')
         language = req.params.get('language', 'zh_CN')
@@ -130,37 +123,6 @@ class Reporting:
         timezone_offset = int(config.utc_offset[1:3]) * 60 + int(config.utc_offset[4:6])
         if config.utc_offset[0] == '-':
             timezone_offset = -timezone_offset
-
-        base_start_datetime_utc = None
-        if base_period_start_datetime_local is not None and len(str.strip(base_period_start_datetime_local)) > 0:
-            base_period_start_datetime_local = str.strip(base_period_start_datetime_local)
-            try:
-                base_start_datetime_utc = datetime.strptime(base_period_start_datetime_local, '%Y-%m-%dT%H:%M:%S')
-            except ValueError:
-                raise falcon.HTTPError(status=falcon.HTTP_400, title='API.BAD_REQUEST',
-                                       description="API.INVALID_BASE_PERIOD_START_DATETIME")
-            base_start_datetime_utc = \
-                base_start_datetime_utc.replace(tzinfo=timezone.utc) - timedelta(minutes=timezone_offset)
-            if config.minutes_to_count == 30 and base_start_datetime_utc.minute >= 30:
-                base_start_datetime_utc = base_start_datetime_utc.replace(minute=30, second=0, microsecond=0)
-            else:
-                base_start_datetime_utc = base_start_datetime_utc.replace(minute=0, second=0, microsecond=0)
-
-        base_end_datetime_utc = None
-        if base_period_end_datetime_local is not None and len(str.strip(base_period_end_datetime_local)) > 0:
-            base_period_end_datetime_local = str.strip(base_period_end_datetime_local)
-            try:
-                base_end_datetime_utc = datetime.strptime(base_period_end_datetime_local, '%Y-%m-%dT%H:%M:%S')
-            except ValueError:
-                raise falcon.HTTPError(status=falcon.HTTP_400, title='API.BAD_REQUEST',
-                                       description="API.INVALID_BASE_PERIOD_END_DATETIME")
-            base_end_datetime_utc = \
-                base_end_datetime_utc.replace(tzinfo=timezone.utc) - timedelta(minutes=timezone_offset)
-
-        if base_start_datetime_utc is not None and base_end_datetime_utc is not None and \
-                base_start_datetime_utc >= base_end_datetime_utc:
-            raise falcon.HTTPError(status=falcon.HTTP_400, title='API.BAD_REQUEST',
-                                   description='API.INVALID_BASE_PERIOD_END_DATETIME')
 
         if reporting_period_start_datetime_local is None:
             raise falcon.HTTPError(status=falcon.HTTP_400, title='API.BAD_REQUEST',
@@ -216,10 +178,6 @@ class Reporting:
                 )
                 redis_client.ping()
 
-                base_end_datetime_utc_normalized = None
-                if base_end_datetime_utc is not None:
-                    base_end_datetime_utc_normalized = base_end_datetime_utc.replace(minute=0, second=0, microsecond=0)
-
                 reporting_end_datetime_utc_normalized = None
                 if reporting_end_datetime_utc is not None:
                     reporting_end_datetime_utc_normalized = reporting_end_datetime_utc.replace(
@@ -228,9 +186,6 @@ class Reporting:
                 cache_params = {
                     "useruuid": user_uuid,
                     "periodtype": period_type,
-                    "base_start_datetime_utc": base_start_datetime_utc.isoformat() if base_start_datetime_utc else None,
-                    "base_end_datetime_utc": base_end_datetime_utc_normalized.isoformat()
-                    if base_end_datetime_utc_normalized else None,
                     "reporting_start_datetime_utc": reporting_start_datetime_utc.isoformat()
                     if reporting_start_datetime_utc else None,
                     "reporting_end_datetime_utc": reporting_end_datetime_utc_normalized.isoformat()
@@ -260,6 +215,12 @@ class Reporting:
         cnx_billing = None
         cnx_carbon = None
         cnx_historical = None
+        cursor_user = None
+        cursor_system = None
+        cursor_energy = None
+        cursor_billing = None
+        cursor_carbon = None
+        cursor_historical = None
 
         try:
             cnx_user = mysql.connector.connect(**config.myems_user_db)
@@ -287,7 +248,7 @@ class Reporting:
             # Get tenant list based on user privileges
             tenant_list = []
             if user['is_admin']:
-                cursor_system.execute(" SELECT t.id, t.name, t.area, t.tenant_type_id, tt.name as tenant_type_name "
+                cursor_system.execute(" SELECT t.id, t.uuid, t.name, t.area, t.tenant_type_id, tt.name as tenant_type_name "
                                       " FROM tbl_tenants t "
                                       " LEFT JOIN tbl_tenant_types tt ON t.tenant_type_id = tt.id "
                                       " ORDER BY t.id ")
@@ -296,10 +257,11 @@ class Reporting:
                     for row in rows_tenants:
                         tenant_list.append({
                             'id': row[0],
-                            'name': row[1],
-                            'area': row[2],
-                            'tenant_type_id': row[3],
-                            'tenant_type_name': row[4] if row[4] else ''
+                            'uuid': row[1],
+                            'name': row[2],
+                            'area': row[3],
+                            'tenant_type_id': row[4],
+                            'tenant_type_name': row[5] if row[5] else ''
                         })
             else:
                 cursor_user.execute(" SELECT data FROM tbl_privileges WHERE id = %s ", (user['privilege_id'],))
@@ -309,6 +271,8 @@ class Reporting:
                                            description='API.USER_PRIVILEGE_NOT_FOUND')
 
                 privilege_data = json.loads(row_privilege[0])
+                # Privilege data in MyEMS is {"spaces": [space_id]}.
+                # Optionally support explicit tenant IDs if present.
                 if 'tenants' in privilege_data and privilege_data['tenants']:
                     tenant_ids_list = privilege_data['tenants']
                     # Validate all IDs are integers before using in SQL
@@ -316,7 +280,7 @@ class Reporting:
                     if len(tenant_ids_list) > 0:
                         format_strings = ','.join(['%s'] * len(tenant_ids_list))
                         cursor_system.execute(
-                            " SELECT t.id, t.name, t.area, t.tenant_type_id, tt.name as tenant_type_name "
+                            " SELECT t.id, t.uuid, t.name, t.area, t.tenant_type_id, tt.name as tenant_type_name "
                             " FROM tbl_tenants t "
                             " LEFT JOIN tbl_tenant_types tt ON t.tenant_type_id = tt.id "
                             " WHERE t.id IN (%s) ORDER BY t.id " % format_strings,
@@ -327,11 +291,62 @@ class Reporting:
                             for row in rows_tenants:
                                 tenant_list.append({
                                     'id': row[0],
-                                    'name': row[1],
-                                    'area': row[2],
-                                    'tenant_type_id': row[3],
-                                    'tenant_type_name': row[4] if row[4] else ''
+                                    'uuid': row[1],
+                                    'name': row[2],
+                                    'area': row[3],
+                                    'tenant_type_id': row[4],
+                                    'tenant_type_name': row[5] if row[5] else ''
                                 })
+                elif 'spaces' in privilege_data and privilege_data['spaces']:
+                    space_id = privilege_data['spaces'][0]
+                    try:
+                        space_id = int(space_id)
+                    except (TypeError, ValueError):
+                        raise falcon.HTTPError(status=falcon.HTTP_404, title='API.NOT_FOUND',
+                                               description='API.USER_PRIVILEGE_NOT_FOUND')
+
+                    # Build space tree and collect tenants under the privileged space hierarchy
+                    cursor_system.execute(" SELECT id, name, parent_space_id "
+                                          " FROM tbl_spaces "
+                                          " ORDER BY id ")
+                    rows_spaces = cursor_system.fetchall()
+                    node_dict = dict()
+                    if rows_spaces is not None and len(rows_spaces) > 0:
+                        for row in rows_spaces:
+                            parent_node = node_dict[row[2]] if row[2] is not None else None
+                            node_dict[row[0]] = AnyNode(id=row[0], parent=parent_node, name=row[1])
+
+                    if space_id not in node_dict:
+                        raise falcon.HTTPError(status=falcon.HTTP_404, title='API.NOT_FOUND',
+                                               description='API.SPACE_NOT_FOUND')
+
+                    space_ids = [node.id for node in LevelOrderIter(node_dict[space_id])]
+                    if space_ids:
+                        format_strings = ','.join(['%s'] * len(space_ids))
+                        cursor_system.execute(
+                            " SELECT DISTINCT t.id, t.uuid, t.name, t.area, t.tenant_type_id, "
+                            "        tt.name as tenant_type_name "
+                            " FROM tbl_tenants t "
+                            " INNER JOIN tbl_spaces_tenants st ON st.tenant_id = t.id "
+                            " LEFT JOIN tbl_tenant_types tt ON t.tenant_type_id = tt.id "
+                            " WHERE st.space_id IN (%s) "
+                            " ORDER BY t.id " % format_strings,
+                            tuple(space_ids)
+                        )
+                        rows_tenants = cursor_system.fetchall()
+                        if rows_tenants:
+                            for row in rows_tenants:
+                                tenant_list.append({
+                                    'id': row[0],
+                                    'uuid': row[1],
+                                    'name': row[2],
+                                    'area': row[3],
+                                    'tenant_type_id': row[4],
+                                    'tenant_type_name': row[5] if row[5] else ''
+                                })
+                else:
+                    raise falcon.HTTPError(status=falcon.HTTP_404, title='API.NOT_FOUND',
+                                           description='API.USER_PRIVILEGE_NOT_FOUND')
 
             if not tenant_list:
                 raise falcon.HTTPError(status=falcon.HTTP_404, title='API.NOT_FOUND',
@@ -359,59 +374,7 @@ class Reporting:
                     }
 
             ################################################################################################################
-            # Step 4: Query base period energy input by category
-            ################################################################################################################
-            base_input = {
-                'names': [],
-                'units': [],
-                'subtotals': [],
-                'subtotals_in_kgce': [],
-                'subtotals_in_kgco2e': [],
-                'subtotals_per_unit_area': [],
-                'increment_rates': [],
-                'toppeaks': [],
-                'onpeaks': [],
-                'midpeaks': [],
-                'offpeaks': [],
-                'deeps': [],
-                'timestamps': [],
-                'values': [],
-                'energy_category_ids': []
-            }
-
-            if base_start_datetime_utc and base_end_datetime_utc:
-                # Validate all IDs are integers before using in SQL
-                validate_integer_ids(tenant_ids_list, "tenant_ids")
-                if len(tenant_ids_list) > 0:
-                    format_strings = ','.join(['%s'] * len(tenant_ids_list))
-                    cursor_energy.execute(
-                        " SELECT energy_category_id, SUM(actual_value) "
-                        " FROM tbl_tenant_input_category_hourly "
-                        " WHERE tenant_id IN (%s) "
-                        "   AND start_datetime_utc >= %%s "
-                        "   AND start_datetime_utc < %%s "
-                        " GROUP BY energy_category_id " % format_strings,
-                        tenant_ids_tuple + (base_start_datetime_utc, base_end_datetime_utc)
-                    )
-                rows_base_input = cursor_energy.fetchall()
-
-                if rows_base_input:
-                    for row in rows_base_input:
-                        ec_id = row[0]
-                        subtotal = float(row[1]) if row[1] is not None else 0.0
-                        if ec_id in energy_category_dict:
-                            ec_info = energy_category_dict[ec_id]
-                            base_input['names'].append(ec_info['name'])
-                            base_input['units'].append(ec_info['unit_of_measure'])
-                            base_input['subtotals'].append(subtotal)
-                            base_input['subtotals_in_kgce'].append(subtotal * ec_info['kgce'])
-                            base_input['subtotals_in_kgco2e'].append(subtotal * ec_info['kgco2e'])
-                            base_input['subtotals_per_unit_area'].append(
-                                subtotal / total_area if total_area > 0 else 0.0)
-                            base_input['energy_category_ids'].append(ec_id)
-
-            ################################################################################################################
-            # Step 5: Query reporting period energy input by category
+            # Step 4: Query reporting period energy input by category
             ################################################################################################################
             reporting_input = {
                 'names': [],
@@ -420,7 +383,6 @@ class Reporting:
                 'subtotals_in_kgce': [],
                 'subtotals_in_kgco2e': [],
                 'subtotals_per_unit_area': [],
-                'increment_rates': [],
                 'toppeaks': [],
                 'onpeaks': [],
                 'midpeaks': [],
@@ -437,44 +399,29 @@ class Reporting:
                 format_strings = ','.join(['%s'] * len(tenant_ids_list))
                 cursor_energy.execute(
                     " SELECT energy_category_id, SUM(actual_value) "
-                " FROM tbl_tenant_input_category_hourly "
-                " WHERE tenant_id IN (%s) "
-                "   AND start_datetime_utc >= %%s "
-                "   AND start_datetime_utc < %%s "
-                " GROUP BY energy_category_id " % format_strings,
-                tenant_ids_tuple + (reporting_start_datetime_utc, reporting_end_datetime_utc)
-               )
-            rows_reporting_input = cursor_energy.fetchall()
+                    " FROM tbl_tenant_input_category_hourly "
+                    " WHERE tenant_id IN (%s) "
+                    "   AND start_datetime_utc >= %%s "
+                    "   AND start_datetime_utc < %%s "
+                    " GROUP BY energy_category_id " % format_strings,
+                    tenant_ids_tuple + (reporting_start_datetime_utc, reporting_end_datetime_utc)
+                )
+                rows_reporting_input = cursor_energy.fetchall()
 
-            if rows_reporting_input:
-                for row in rows_reporting_input:
-                    ec_id = row[0]
-                    subtotal = float(row[1]) if row[1] is not None else 0.0
-                    if ec_id in energy_category_dict:
-                        ec_info = energy_category_dict[ec_id]
-                        reporting_input['names'].append(ec_info['name'])
-                        reporting_input['units'].append(ec_info['unit_of_measure'])
-                        reporting_input['subtotals'].append(subtotal)
-                        reporting_input['subtotals_in_kgce'].append(subtotal * ec_info['kgce'])
-                        reporting_input['subtotals_in_kgco2e'].append(subtotal * ec_info['kgco2e'])
-                        reporting_input['subtotals_per_unit_area'].append(
-                            subtotal / total_area if total_area > 0 else 0.0)
-                        reporting_input['energy_category_ids'].append(ec_id)
-
-            # Calculate increment rates
-            for i in range(len(reporting_input['names'])):
-                name = reporting_input['names'][i]
-                if name in base_input['names']:
-                    base_idx = base_input['names'].index(name)
-                    base_val = base_input['subtotals'][base_idx]
-                    report_val = reporting_input['subtotals'][i]
-                    if base_val > 0:
-                        increment_rate = (report_val - base_val) / base_val
-                    else:
-                        increment_rate = 0.0
-                    reporting_input['increment_rates'].append(increment_rate)
-                else:
-                    reporting_input['increment_rates'].append(0.0)
+                if rows_reporting_input:
+                    for row in rows_reporting_input:
+                        ec_id = row[0]
+                        subtotal = float(row[1]) if row[1] is not None else 0.0
+                        if ec_id in energy_category_dict:
+                            ec_info = energy_category_dict[ec_id]
+                            reporting_input['names'].append(ec_info['name'])
+                            reporting_input['units'].append(ec_info['unit_of_measure'])
+                            reporting_input['subtotals'].append(subtotal)
+                            reporting_input['subtotals_in_kgce'].append(subtotal * ec_info['kgce'])
+                            reporting_input['subtotals_in_kgco2e'].append(subtotal * ec_info['kgco2e'])
+                            reporting_input['subtotals_per_unit_area'].append(
+                                subtotal / total_area if total_area > 0 else 0.0)
+                            reporting_input['energy_category_ids'].append(ec_id)
 
             # Calculate totals
             total_in_kgce = sum(reporting_input['subtotals_in_kgce'])
@@ -484,16 +431,8 @@ class Reporting:
             reporting_input['total_in_kgce_per_unit_area'] = total_in_kgce / total_area if total_area > 0 else 0.0
             reporting_input['total_in_kgco2e_per_unit_area'] = total_in_kgco2e / total_area if total_area > 0 else 0.0
 
-            # Overall increment rates
-            base_total_kgce = sum(base_input['subtotals_in_kgce'])
-            base_total_kgco2e = sum(base_input['subtotals_in_kgco2e'])
-            reporting_input['increment_rate_in_kgce'] = (
-                (total_in_kgce - base_total_kgce) / base_total_kgce if base_total_kgce > 0 else 0.0)
-            reporting_input['increment_rate_in_kgco2e'] = (
-                (total_in_kgco2e - base_total_kgco2e) / base_total_kgco2e if base_total_kgco2e > 0 else 0.0)
-
             ################################################################################################################
-            # Step 6 & 7: Query energy cost data
+            # Step 5: Query energy cost data
             ################################################################################################################
             reporting_cost = {
                 'names': list(reporting_input['names']),
@@ -501,7 +440,6 @@ class Reporting:
                 'units': ['CNY'] * len(reporting_input['names']),
                 'subtotals': [0.0] * len(reporting_input['names']),
                 'subtotals_per_unit_area': [0.0] * len(reporting_input['names']),
-                'increment_rates': list(reporting_input['increment_rates']),
                 'timestamps': [],
                 'values': []
             }
@@ -512,29 +450,29 @@ class Reporting:
                 format_strings = ','.join(['%s'] * len(tenant_ids_list))
                 cursor_billing.execute(
                     " SELECT energy_category_id, SUM(actual_value) "
-                " FROM tbl_tenant_input_category_hourly "
-                " WHERE tenant_id IN (%s) "
-                "   AND start_datetime_utc >= %%s "
-                "   AND start_datetime_utc < %%s "
-                " GROUP BY energy_category_id " % format_strings,
-                tenant_ids_tuple + (reporting_start_datetime_utc, reporting_end_datetime_utc)
-            )
-            rows_billing = cursor_billing.fetchall()
+                    " FROM tbl_tenant_input_category_hourly "
+                    " WHERE tenant_id IN (%s) "
+                    "   AND start_datetime_utc >= %%s "
+                    "   AND start_datetime_utc < %%s "
+                    " GROUP BY energy_category_id " % format_strings,
+                    tenant_ids_tuple + (reporting_start_datetime_utc, reporting_end_datetime_utc)
+                )
+                rows_billing = cursor_billing.fetchall()
 
-            if rows_billing:
-                for row in rows_billing:
-                    ec_id = row[0]
-                    cost = float(row[1]) if row[1] is not None else 0.0
-                    if ec_id in energy_category_dict:
-                        ec_name = energy_category_dict[ec_id]['name']
-                        if ec_name in reporting_cost['names']:
-                            idx = reporting_cost['names'].index(ec_name)
-                            reporting_cost['subtotals'][idx] = cost
-                            reporting_cost['subtotals_per_unit_area'][idx] = (
-                                cost / total_area if total_area > 0 else 0.0)
+                if rows_billing:
+                    for row in rows_billing:
+                        ec_id = row[0]
+                        cost = float(row[1]) if row[1] is not None else 0.0
+                        if ec_id in energy_category_dict:
+                            ec_name = energy_category_dict[ec_id]['name']
+                            if ec_name in reporting_cost['names']:
+                                idx = reporting_cost['names'].index(ec_name)
+                                reporting_cost['subtotals'][idx] = cost
+                                reporting_cost['subtotals_per_unit_area'][idx] = (
+                                    cost / total_area if total_area > 0 else 0.0)
 
             ################################################################################################################
-            # Step 8: Query daily trends from 1st of last month (OPTIMIZED: single query + memory aggregation)
+            # Step 6: Query daily trends from 1st of last month (OPTIMIZED: single query + memory aggregation)
             ################################################################################################################
             # Calculate the start date: 1st of last month relative to reporting end
             if reporting_end_datetime_utc.month == 1:
@@ -645,39 +583,44 @@ class Reporting:
             reporting_input['values'] = daily_energy_values
             reporting_cost['timestamps'] = [daily_timestamps] * len(reporting_cost['names'])
             reporting_cost['values'] = daily_cost_values
-            
+
             # Add energy category names to daily trends for frontend display
             reporting_input['category_names'] = list(reporting_input['names'])
             reporting_input['category_units'] = list(reporting_input['units'])
 
             ################################################################################################################
-            # Step 9: Query tenant statistics
+            # Step 7: Query tenant statistics
             ################################################################################################################
             # Count meters
             # Validate all IDs are integers before using in SQL (already validated above)
+            total_meters = 0
+            total_sensors = 0
             if len(tenant_ids_list) > 0:
                 format_strings = ','.join(['%s'] * len(tenant_ids_list))
-                cursor_system.execute(
-                    " SELECT COUNT(DISTINCT meter_id) "
-                    " FROM tbl_tenants_meters "
-                " WHERE tenant_id IN (%s) " % format_strings,
-                tenant_ids_tuple
-            )
-            row = cursor_system.fetchone()
-            total_meters = int(row[0]) if row and row[0] else 0
+                try:
+                    cursor_system.execute(
+                        " SELECT COUNT(DISTINCT meter_id) "
+                        " FROM tbl_tenants_meters "
+                        " WHERE tenant_id IN (%s) " % format_strings,
+                        tenant_ids_tuple
+                    )
+                    row = cursor_system.fetchone()
+                    total_meters = int(row[0]) if row and row[0] else 0
+                except Exception:
+                    total_meters = 0
 
-            # Count sensors
-            # Validate all IDs are integers before using in SQL (already validated above)
-            if len(tenant_ids_list) > 0:
-                format_strings = ','.join(['%s'] * len(tenant_ids_list))
-                cursor_system.execute(
-                    " SELECT COUNT(DISTINCT sensor_id) "
-                " FROM tbl_tenants_sensors "
-                " WHERE tenant_id IN (%s) " % format_strings,
-                tenant_ids_tuple
-            )
-            row = cursor_system.fetchone()
-            total_sensors = int(row[0]) if row and row[0] else 0
+                # Count sensors
+                try:
+                    cursor_system.execute(
+                        " SELECT COUNT(DISTINCT sensor_id) "
+                        " FROM tbl_tenants_sensors "
+                        " WHERE tenant_id IN (%s) " % format_strings,
+                        tenant_ids_tuple
+                    )
+                    row = cursor_system.fetchone()
+                    total_sensors = int(row[0]) if row and row[0] else 0
+                except Exception:
+                    total_sensors = 0
 
             # Count active alerts (from FDD system)
             total_alerts = 0
@@ -696,9 +639,9 @@ class Reporting:
                         "   AND status = 'active' " % format_strings,
                         tenant_ids_tuple
                     )
-                row = cursor_fdd.fetchone()
-                total_alerts = int(row[0]) if row and row[0] else 0
-            except:
+                    row = cursor_fdd.fetchone()
+                    total_alerts = int(row[0]) if row and row[0] else 0
+            except Exception:
                 total_alerts = 0
             finally:
                 if cursor_fdd:
@@ -707,11 +650,11 @@ class Reporting:
                     cnx_fdd.close()
 
             ################################################################################################################
-            # Step 10: Query top 5 consuming tenants and all tenants energy by category
+            # Step 8: Query top 5 consuming tenants and all tenants energy by category
             ################################################################################################################
             top_tenants = []
             tenant_energy_by_category = {}
-            
+
             # First get tenant names
             tenant_name_dict = {}
             # Validate all IDs are integers before using in SQL (already validated above)
@@ -721,10 +664,10 @@ class Reporting:
                     " SELECT id, name FROM tbl_tenants WHERE id IN (%s) " % format_strings,
                     tenant_ids_tuple
                 )
-            rows_tenants_names = cursor_system.fetchall()
-            if rows_tenants_names:
-                for row in rows_tenants_names:
-                    tenant_name_dict[row[0]] = row[1]
+                rows_tenants_names = cursor_system.fetchall()
+                if rows_tenants_names:
+                    for row in rows_tenants_names:
+                        tenant_name_dict[row[0]] = row[1]
 
             # Query energy consumption by category for each tenant
             # Validate all IDs are integers before using in SQL (already validated above)
@@ -740,24 +683,25 @@ class Reporting:
                     " ORDER BY tenant_id, category_energy DESC " % format_strings,
                     tenant_ids_tuple + (reporting_start_datetime_utc, reporting_end_datetime_utc)
                 )
-            rows_all = cursor_energy.fetchall()
-            if rows_all:
-                for row in rows_all:
-                    tenant_id = row[0]
-                    ec_id = row[1]
-                    category_energy = float(row[2]) if row[2] else 0.0
-                    
-                    if tenant_id not in tenant_energy_by_category:
-                        tenant_energy_by_category[tenant_id] = {
-                            'total_energy': 0.0,
-                            'categories': {}
-                        }
-                    
-                    tenant_energy_by_category[tenant_id]['categories'][ec_id] = category_energy
-                    tenant_energy_by_category[tenant_id]['total_energy'] += category_energy
+                rows_all = cursor_energy.fetchall()
+                if rows_all:
+                    for row in rows_all:
+                        tenant_id = row[0]
+                        ec_id = row[1]
+                        category_energy = float(row[2]) if row[2] else 0.0
+
+                        if tenant_id not in tenant_energy_by_category:
+                            tenant_energy_by_category[tenant_id] = {
+                                'total_energy': 0.0,
+                                'categories': {}
+                            }
+
+                        tenant_energy_by_category[tenant_id]['categories'][ec_id] = category_energy
+                        tenant_energy_by_category[tenant_id]['total_energy'] += category_energy
 
             # Query cost by category for each tenant
             tenant_cost_by_category = {}
+            rows_cost = []
             if len(tenant_ids_list) > 0:
                 # Validate all IDs are integers before using in SQL (already validated above)
                 format_strings = ','.join(['%s'] * len(tenant_ids_list))
@@ -789,6 +733,7 @@ class Reporting:
 
             # Query carbon by category for each tenant
             tenant_carbon_by_category = {}
+            rows_carbon = []
             if len(tenant_ids_list) > 0:
                 # Validate all IDs are integers before using in SQL (already validated above)
                 format_strings = ','.join(['%s'] * len(tenant_ids_list))
@@ -824,7 +769,7 @@ class Reporting:
                 key=lambda x: x[1]['total_energy'],
                 reverse=True
             )[:5]
-            
+
             for tenant_id, energy_data in sorted_tenants:
                 tenant_name = tenant_name_dict.get(tenant_id, f'Tenant #{tenant_id}')
                 top_tenants.append({
@@ -835,9 +780,9 @@ class Reporting:
                 })
 
             ################################################################################################################
-            # Step 11: Construct the report
+            # Step 9: Construct the report
             ################################################################################################################
-            
+
             # Prepare tenant details for response with energy data by category
             tenant_details = []
             for tenant in tenant_list:
@@ -854,9 +799,10 @@ class Reporting:
                     'total_carbon': 0.0,
                     'categories': {}
                 })
-            
+
                 tenant_details.append({
                     'id': tenant_id,
+                    'uuid': tenant['uuid'],
                     'name': tenant['name'],
                     'area': float(tenant['area']) if tenant['area'] else 0.0,
                     'tenant_type': tenant['tenant_type_name'],
@@ -867,7 +813,7 @@ class Reporting:
                     'total_carbon': carbon_data['total_carbon'],
                     'carbon_by_category': carbon_data['categories']
                 })
-            
+
             result = {
                 'summary': {
                     'total_tenants': total_tenants,
@@ -878,7 +824,6 @@ class Reporting:
                 },
                 'tenants': tenant_details,
                 'reporting_period_input': reporting_input,
-                'base_period_input': base_input,
                 'reporting_period_cost': reporting_cost,
                 'top_tenants': top_tenants,
                 'period_type': period_type,
@@ -886,16 +831,17 @@ class Reporting:
                 'reporting_period_end': reporting_end_datetime_utc.isoformat(),
             }
 
-            #print(result)
             resp.text = json.dumps(result)
 
             # Cache the result
             if redis_client and cache_key:
                 try:
                     redis_client.setex(cache_key, cache_expire, json.dumps(result))
-                except:
+                except Exception:
                     pass
 
+        except falcon.HTTPError:
+            raise
         except Exception as e:
             logger.error(f"Error in tenant dashboard: {str(e)}")
             raise

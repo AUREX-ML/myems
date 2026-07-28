@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import falcon
 import mysql.connector
 import simplejson as json
@@ -782,7 +782,7 @@ class SpaceItem:
             latitude = None
 
         if 'longitude' in new_values['data'].keys():
-            if new_values['data']['latitude'] is not None:
+            if new_values['data']['longitude'] is not None:
                 if not (isinstance(new_values['data']['longitude'], float) or
                         isinstance(new_values['data']['longitude'], int)) or \
                         new_values['data']['longitude'] < -180.0 or \
@@ -1824,6 +1824,80 @@ class SpaceMeterCollection:
 
         resp.status = falcon.HTTP_201
         resp.location = '/spaces/' + str(id_) + '/meters/' + str(meter_id)
+
+
+class MeterSpaceCollection:
+    """Get spaces that a meter is bound to (RESTful style)"""
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def on_get(req, resp, id_):
+        if 'API-KEY' not in req.headers or \
+                not isinstance(req.headers['API-KEY'], str) or \
+                len(str.strip(req.headers['API-KEY'])) == 0:
+            access_control(req)
+        else:
+            api_key_control(req)
+        
+        if not id_.isdigit() or int(id_) <= 0:
+            raise falcon.HTTPError(status=falcon.HTTP_400, title='API.BAD_REQUEST',
+                                   description='API.INVALID_METER_ID')
+        
+        meter_type = req.get_param('type')  # meters, virtualmeters, offlinemeters
+        
+        if meter_type not in ['meters', 'virtualmeters', 'offlinemeters']:
+            raise falcon.HTTPError(status=falcon.HTTP_400, title='API.BAD_REQUEST',
+                                   description='API.INVALID_METER_TYPE')
+        
+        cnx = None
+        cursor = None
+        
+        try:
+            cnx = mysql.connector.connect(**config.myems_system_db)
+            try:
+                cursor = cnx.cursor()
+                
+                # Determine the table and column names based on meter type
+                if meter_type == 'meters':
+                    relation_table = 'tbl_spaces_meters'
+                    meter_col = 'meter_id'
+                    meter_tbl = 'tbl_meters'
+                elif meter_type == 'virtualmeters':
+                    relation_table = 'tbl_spaces_virtual_meters'
+                    meter_col = 'virtual_meter_id'
+                    meter_tbl = 'tbl_virtual_meters'
+                else:  # offlinemeters
+                    relation_table = 'tbl_spaces_offline_meters'
+                    meter_col = 'offline_meter_id'
+                    meter_tbl = 'tbl_offline_meters'
+                
+                # Check if meter exists
+                cursor.execute(f" SELECT name FROM {meter_tbl} WHERE id = %s ", (id_,))
+                if cursor.fetchone() is None:
+                    raise falcon.HTTPError(status=falcon.HTTP_404, title='API.NOT_FOUND',
+                                           description='API.METER_NOT_FOUND')
+                
+                # Query all spaces that this meter is bound to
+                query = f""" SELECT s.id, s.name 
+                             FROM {relation_table} sm, tbl_spaces s 
+                             WHERE sm.space_id = s.id AND sm.{meter_col} = %s 
+                             ORDER BY s.id """
+                cursor.execute(query, (id_,))
+                rows = cursor.fetchall()
+                
+                result = []
+                if rows is not None and len(rows) > 0:
+                    for row in rows:
+                        result.append({"id": row[0], "name": row[1]})
+                
+                resp.text = json.dumps(result)
+            finally:
+                if cursor:
+                    cursor.close()
+        finally:
+            if cnx:
+                cnx.close()
 
 
 class SpaceMeterItem:
@@ -3611,7 +3685,7 @@ class SpaceTreeCollection:
                                            description='API.USER_SESSION_NOT_FOUND')
 
                 utc_expires = row[0]
-                if datetime.utcnow() > utc_expires:
+                if datetime.now(timezone.utc).replace(tzinfo=None) > utc_expires:
                     raise falcon.HTTPError(status=falcon.HTTP_400, title='API.BAD_REQUEST',
                                            description='API.USER_SESSION_TIMEOUT')
 
@@ -3661,7 +3735,7 @@ class SpaceTreeCollection:
             cnx = mysql.connector.connect(**config.myems_system_db)
             try:
                 cursor = cnx.cursor()
-                query = (" SELECT id, name, parent_space_id "
+                query = (" SELECT id, name, uuid, parent_space_id, latitude, longitude "
                          " FROM tbl_spaces "
                          " ORDER BY id ")
                 cursor.execute(query)
@@ -3669,8 +3743,12 @@ class SpaceTreeCollection:
                 node_dict = dict()
                 if rows_spaces is not None and len(rows_spaces) > 0:
                     for row in rows_spaces:
-                        parent_node = node_dict[row[2]] if row[2] is not None else None
-                        node_dict[row[0]] = AnyNode(id=row[0], parent=parent_node, name=row[1])
+                        parent_node = node_dict[row[3]] if row[3] is not None else None
+                        node = AnyNode(id=row[0], parent=parent_node, name=row[1])
+                        node.uuid = row[2]
+                        node.latitude = float(row[4]) if row[4] is not None else None
+                        node.longitude = float(row[5]) if row[5] is not None else None
+                        node_dict[row[0]] = node
 
                 resp.text = JsonExporter(sort_keys=True).export(node_dict[space_id], )
             finally:
@@ -5291,9 +5369,11 @@ class SpaceClone:
                     timezone_offset = int(config.utc_offset[1:3]) * 60 + int(config.utc_offset[4:6])
                     if config.utc_offset[0] == '-':
                         timezone_offset = -timezone_offset
-                    new_name = (str.strip(meta_result['name']) +
-                                (datetime.utcnow() +
-                                 timedelta(minutes=timezone_offset)).isoformat(sep='-', timespec='seconds'))
+                    suffix = (
+                        datetime.now(timezone.utc).replace(tzinfo=None)
+                        + timedelta(minutes=timezone_offset)
+                    ).isoformat(sep='-', timespec='seconds')
+                    new_name = str.strip(meta_result['name']) + suffix
 
                     # save new space to database
                     add_values = (" INSERT INTO tbl_spaces "
